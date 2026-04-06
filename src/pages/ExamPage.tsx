@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 
 const Ic = {
   school:  <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3zM5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z"/></svg>,
   timer:   <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M15 1H9v2h6V1zm-4 13h2V8h-2v6zm8.03-6.61l1.42-1.42c-.43-.51-.9-.99-1.41-1.41l-1.42 1.42A8.962 8.962 0 0 0 12 4c-4.97 0-9 4.03-9 9s4.02 9 9 9a8.994 8.994 0 0 0 7.03-14.61zM12 20c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/></svg>,
   flag:    <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6z"/></svg>,
-  prev:    <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>,
+  prev:    <svg viewBox="0 0 24 24" fill="currentColor" width="18" heighht="18"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>,
   next:    <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"/></svg>,
   clear:   <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>,
   submit:  <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>,
@@ -19,12 +19,8 @@ const Ic = {
   eraser:  <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M15.14 3c-.51 0-1.02.2-1.41.59L2.59 14.73c-.78.77-.78 2.04 0 2.83L5.03 20h7.66l8.72-8.72c.79-.78.79-2.05 0-2.83l-4.85-4.86c-.39-.39-.9-.59-1.42-.59z"/></svg>,
 }
 
-const CORRECT_ANSWERS: Record<number,number> = {
-  1:1,2:0,3:0,4:1,5:2,6:1,7:1,8:2,9:0,10:1,
-  11:2,12:0,13:0,14:2,15:3,16:1,17:0,18:1,19:0,20:2,
-}
-
-const QUESTIONS = [
+// ── Sample questions pool (20 — will come from API per subject) ────
+const ALL_QUESTIONS = [
   {id:1,  text:'If 2x + 3 = 11, what is the value of x?',                          options:['x = 3','x = 4','x = 5','x = 6']},
   {id:2,  text:'Area of a circle with radius 7 cm? (π ≈ 3.14)',                    options:['153.86 cm²','43.96 cm²','49 cm²','144 cm²']},
   {id:3,  text:'Simplify: 3(2x − 4) + 2(x + 5)',                                   options:['8x − 2','8x + 2','6x − 2','6x + 2']},
@@ -47,224 +43,60 @@ const QUESTIONS = [
   {id:20, text:'Volume of cylinder r=3cm, h=10cm. (π≈3.14)',                       options:['94.2 cm³','188.4 cm³','282.6 cm³','942 cm³']},
 ]
 
-const TOTAL    = QUESTIONS.length
-const DURATION = 60 * 60
+const CORRECT_ANSWERS: Record<number,number> = {
+  1:1,2:0,3:0,4:1,5:2,6:1,7:1,8:2,9:0,10:1,
+  11:2,12:0,13:0,14:2,15:3,16:1,17:0,18:1,19:0,20:2,
+}
 
 // ── Scientific Calculator ─────────────────────────────────────────
 function Calculator() {
-  // Core state
-  const [display,   setDisplay]   = useState('0')
-  const [expression, setExpression] = useState('')  // what's shown above display
-  const [operand,   setOperand]   = useState<number|null>(null)
-  const [operator,  setOperator]  = useState<string|null>(null)
-  const [waitNext,  setWaitNext]  = useState(false)  // true after operator pressed → next digit starts fresh
-  const [isDeg,     setIsDeg]     = useState(true)   // degrees vs radians mode
-  const [error,     setError]     = useState(false)
-
-  const toRad = (x: number) => isDeg ? x * Math.PI / 180 : x
-
-  const fmt = (n: number): string => {
-    if (!isFinite(n)) return 'Error'
-    const s = parseFloat(n.toPrecision(12)).toString()
-    return s.length > 14 ? n.toExponential(6) : s
-  }
-
-  // Append digit / dot
-  const appendDigit = (d: string) => {
-    setError(false)
-    if (waitNext) {
-      setDisplay(d === '.' ? '0.' : d)
-      setWaitNext(false)
-    } else {
-      if (d === '.' && display.includes('.')) return
-      setDisplay(prev => prev === '0' && d !== '.' ? d : prev + d)
-    }
-  }
-
-  // Binary operators: +, −, ×, ÷, xʸ
-  const applyOp = (op: string) => {
-    const cur = parseFloat(display)
-    if (operand !== null && operator && !waitNext) {
-      const result = compute(operand, cur, operator)
-      if (!isFinite(result)) { setDisplay('Error'); setError(true); setOperand(null); setOperator(null); setWaitNext(true); return }
-      setDisplay(fmt(result))
-      setExpression(`${fmt(result)} ${op}`)
-      setOperand(result)
-    } else {
-      setOperand(cur)
-      setExpression(`${fmt(cur)} ${op}`)
-    }
-    setOperator(op)
-    setWaitNext(true)
-  }
-
-  const compute = (a: number, b: number, op: string): number => {
-    switch(op) {
-      case '+': return a + b
-      case '−': return a - b
-      case '×': return a * b
-      case '÷': return b !== 0 ? a / b : NaN
-      case 'xʸ': return Math.pow(a, b)
-      default: return b
-    }
-  }
-
-  const equals = () => {
-    if (operand === null || operator === null) return
-    const cur = parseFloat(display)
-    const result = compute(operand, cur, operator)
-    if (!isFinite(result)) { setDisplay('Error'); setError(true) }
-    else setDisplay(fmt(result))
-    setExpression('')
-    setOperand(null)
-    setOperator(null)
-    setWaitNext(true)
-  }
-
-  // Unary / scientific functions
-  const sci = (fn: string) => {
-    const x = parseFloat(display)
-    let result: number
-    switch(fn) {
-      case 'sin':  result = Math.sin(toRad(x)); break
-      case 'cos':  result = Math.cos(toRad(x)); break
-      case 'tan':  result = Math.tan(toRad(x)); break
-      case 'sin⁻¹': result = isDeg ? Math.asin(x)*180/Math.PI : Math.asin(x); break
-      case 'cos⁻¹': result = isDeg ? Math.acos(x)*180/Math.PI : Math.acos(x); break
-      case 'tan⁻¹': result = isDeg ? Math.atan(x)*180/Math.PI : Math.atan(x); break
-      case 'log':  result = Math.log10(x); break
-      case 'ln':   result = Math.log(x); break
-      case '√':    result = Math.sqrt(x); break
-      case 'x²':   result = x * x; break
-      case '1/x':  result = x !== 0 ? 1/x : NaN; break
-      case 'n!':   result = factorial(x); break
-      case 'π':    setDisplay(fmt(Math.PI)); setWaitNext(true); return
-      case 'e':    setDisplay(fmt(Math.E)); setWaitNext(true); return
-      case '+/-':  setDisplay(fmt(-x)); return
-      case '%':    setDisplay(fmt(x/100)); return
-      default: return
-    }
-    if (!isFinite(result)) { setDisplay('Error'); setError(true) }
-    else setDisplay(fmt(result))
-    setWaitNext(true)
-  }
-
-  const factorial = (n: number): number => {
-    if (n < 0 || !Number.isInteger(n)) return NaN
-    if (n > 170) return Infinity
-    let r = 1; for (let i = 2; i <= n; i++) r *= i; return r
-  }
-
-  const clear = () => { setDisplay('0'); setExpression(''); setOperand(null); setOperator(null); setWaitNext(false); setError(false) }
-  const backspace = () => { if (waitNext || error) { setDisplay('0'); setWaitNext(false); setError(false); return } setDisplay(d => d.length > 1 ? d.slice(0,-1) : '0') }
-
-  // Button definitions
-  type Btn = { label: string; action: () => void; color?: string; textColor?: string; small?: boolean }
-
-  const btnStyle = (color='#f3f4f5', text='#191c1d') => ({ backgroundColor: color, color: text, fontFamily: 'Manrope,sans-serif' })
-
-  const OP    = '#006e2f'; const OP_T = '#fff'
-  const SCI   = '#1e3a2f'; const SCI_T = '#4ae176'
-  const UTIL  = '#e7e8e9'; const UTIL_T = '#191c1d'
-  const NUM   = '#f3f4f5'; const NUM_T = '#191c1d'
-  const EQ    = '#22c55e'; const EQ_T = '#fff'
-
-  const rows: Btn[][] = [
-    // Row 1: mode + sci functions
-    [
-      {label: isDeg?'DEG':'RAD', action:()=>setIsDeg(d=>!d), color:UTIL, textColor:UTIL_T, small:true},
-      {label:'sin',  action:()=>sci('sin'),  color:SCI, textColor:SCI_T, small:true},
-      {label:'cos',  action:()=>sci('cos'),  color:SCI, textColor:SCI_T, small:true},
-      {label:'tan',  action:()=>sci('tan'),  color:SCI, textColor:SCI_T, small:true},
-      {label:'sin⁻¹',action:()=>sci('sin⁻¹'),color:SCI, textColor:SCI_T, small:true},
-    ],
-    // Row 2
-    [
-      {label:'π',    action:()=>sci('π'),    color:SCI, textColor:SCI_T, small:true},
-      {label:'e',    action:()=>sci('e'),    color:SCI, textColor:SCI_T, small:true},
-      {label:'log',  action:()=>sci('log'),  color:SCI, textColor:SCI_T, small:true},
-      {label:'ln',   action:()=>sci('ln'),   color:SCI, textColor:SCI_T, small:true},
-      {label:'n!',   action:()=>sci('n!'),   color:SCI, textColor:SCI_T, small:true},
-    ],
-    // Row 3
-    [
-      {label:'√',    action:()=>sci('√'),    color:SCI, textColor:SCI_T, small:true},
-      {label:'x²',   action:()=>sci('x²'),   color:SCI, textColor:SCI_T, small:true},
-      {label:'xʸ',   action:()=>applyOp('xʸ'),color:SCI, textColor:SCI_T, small:true},
-      {label:'1/x',  action:()=>sci('1/x'),  color:SCI, textColor:SCI_T, small:true},
-      {label:'%',    action:()=>sci('%'),    color:UTIL, textColor:UTIL_T, small:true},
-    ],
-    // Row 4: standard
-    [
-      {label:'C',    action:clear,            color:'#ffdad6', textColor:'#9e4036'},
-      {label:'⌫',    action:backspace,         color:UTIL, textColor:UTIL_T},
-      {label:'+/-',  action:()=>sci('+/-'),   color:UTIL, textColor:UTIL_T},
-      {label:'÷',    action:()=>applyOp('÷'), color:OP,   textColor:OP_T},
-    ],
-    [
-      {label:'7', action:()=>appendDigit('7'), color:NUM, textColor:NUM_T},
-      {label:'8', action:()=>appendDigit('8'), color:NUM, textColor:NUM_T},
-      {label:'9', action:()=>appendDigit('9'), color:NUM, textColor:NUM_T},
-      {label:'×', action:()=>applyOp('×'),    color:OP,  textColor:OP_T},
-    ],
-    [
-      {label:'4', action:()=>appendDigit('4'), color:NUM, textColor:NUM_T},
-      {label:'5', action:()=>appendDigit('5'), color:NUM, textColor:NUM_T},
-      {label:'6', action:()=>appendDigit('6'), color:NUM, textColor:NUM_T},
-      {label:'−', action:()=>applyOp('−'),    color:OP,  textColor:OP_T},
-    ],
-    [
-      {label:'1', action:()=>appendDigit('1'), color:NUM, textColor:NUM_T},
-      {label:'2', action:()=>appendDigit('2'), color:NUM, textColor:NUM_T},
-      {label:'3', action:()=>appendDigit('3'), color:NUM, textColor:NUM_T},
-      {label:'+', action:()=>applyOp('+'),    color:OP,  textColor:OP_T},
-    ],
-    [
-      {label:'0', action:()=>appendDigit('0'), color:NUM, textColor:NUM_T},
-      {label:'.', action:()=>appendDigit('.'), color:NUM, textColor:NUM_T},
-      {label:'⌫', action:backspace,            color:UTIL, textColor:UTIL_T},
-      {label:'=', action:equals,               color:EQ,  textColor:EQ_T},
-    ],
-  ]
-
-  return (
+  const [display,setDisplay]=useState('0'),[prev,setPrev]=useState(''),[op,setOp]=useState(''),[reset,setReset]=useState(false),[isDeg,setIsDeg]=useState(true),[error,setError]=useState(false)
+  const toRad=(x:number)=>isDeg?x*Math.PI/180:x
+  const fmt=(n:number)=>{ if(!isFinite(n))return 'Error'; const s=parseFloat(n.toPrecision(12)).toString(); return s.length>14?n.toExponential(6):s }
+  const appendDigit=(d:string)=>{ setError(false); if(reset){setDisplay(d==='.'?'0.':d);setReset(false)}else{ if(d==='.'&&display.includes('.'))return; setDisplay(p=>p==='0'&&d!=='.'?d:p+d) } }
+  const applyOp=(o:string)=>{ const cur=parseFloat(display); if(prev!==''&&op&&!reset){ const r=compute(parseFloat(prev),cur,op); if(!isFinite(r)){setDisplay('Error');setError(true);setPrev('');setOp('');setReset(true);return}; setDisplay(fmt(r)); setPrev(fmt(r)) }else setPrev(fmt(cur)); setOp(o); setReset(true) }
+  const compute=(a:number,b:number,o:string):number=>{ switch(o){case'+':return a+b;case'−':return a-b;case'×':return a*b;case'÷':return b!==0?a/b:NaN;case'xʸ':return Math.pow(a,b);default:return b} }
+  const equals=()=>{ if(prev===''||op===null)return; const r=compute(parseFloat(prev),parseFloat(display),op); if(!isFinite(r)){setDisplay('Error');setError(true)}else setDisplay(fmt(r)); setPrev('');setOp('');setReset(true) }
+  const sci=(fn:string)=>{ const x=parseFloat(display); let r:number; switch(fn){ case'sin':r=Math.sin(toRad(x));break;case'cos':r=Math.cos(toRad(x));break;case'tan':r=Math.tan(toRad(x));break;case'sin⁻¹':r=isDeg?Math.asin(x)*180/Math.PI:Math.asin(x);break;case'cos⁻¹':r=isDeg?Math.acos(x)*180/Math.PI:Math.acos(x);break;case'tan⁻¹':r=isDeg?Math.atan(x)*180/Math.PI:Math.atan(x);break;case'log':r=Math.log10(x);break;case'ln':r=Math.log(x);break;case'√':r=Math.sqrt(x);break;case'x²':r=x*x;break;case'1/x':r=x!==0?1/x:NaN;break;case'n!':r=factorial(x);break;case'π':setDisplay(fmt(Math.PI));setReset(true);return;case'e':setDisplay(fmt(Math.E));setReset(true);return;case'+/-':setDisplay(fmt(-x));return;case'%':setDisplay(fmt(x/100));return;default:return} if(!isFinite(r)){setDisplay('Error');setError(true)}else setDisplay(fmt(r)); setReset(true) }
+  const factorial=(n:number):number=>{ if(n<0||!Number.isInteger(n))return NaN; if(n>170)return Infinity; let r=1;for(let i=2;i<=n;i++)r*=i;return r }
+  const clear=()=>{setDisplay('0');setPrev('');setOp('');setReset(false);setError(false)}
+  const backspace=()=>{ if(reset||error){setDisplay('0');setReset(false);setError(false);return}; setDisplay(d=>d.length>1?d.slice(0,-1):'0') }
+  const OP='#006e2f',OP_T='#fff',SCI='#1e3a2f',SCI_T='#4ae176',UTIL='#e7e8e9',UTIL_T='#191c1d',NUM='#f3f4f5',NUM_T='#191c1d',EQ='#22c55e',EQ_T='#fff'
+  const sciRows=[[isDeg?'DEG':'RAD','sin','cos','tan','sin⁻¹'],[   'π','e','log','ln','n!'],[   '√','x²','xʸ','1/x','%']]
+  const sciColors=[[UTIL,SCI,SCI,SCI,SCI],[SCI,SCI,SCI,SCI,SCI],[SCI,SCI,SCI,SCI,UTIL]]
+  const sciTextColors=[[UTIL_T,SCI_T,SCI_T,SCI_T,SCI_T],[SCI_T,SCI_T,SCI_T,SCI_T,SCI_T],[SCI_T,SCI_T,SCI_T,SCI_T,UTIL_T]]
+  const sciActions=[[()=>setIsDeg(d=>!d),()=>sci('sin'),()=>sci('cos'),()=>sci('tan'),()=>sci('sin⁻¹')],[()=>sci('π'),()=>sci('e'),()=>sci('log'),()=>sci('ln'),()=>sci('n!')],[()=>sci('√'),()=>sci('x²'),()=>applyOp('xʸ'),()=>sci('1/x'),()=>sci('%')]]
+  const stdRows=[['C','⌫','+/-','÷'],['7','8','9','×'],['4','5','6','−'],['1','2','3','+'],[  '0','.','','=']]
+  const stdColors=[ ['#ffdad6',UTIL,UTIL,OP],[NUM,NUM,NUM,OP],[NUM,NUM,NUM,OP],[NUM,NUM,NUM,OP],[NUM,NUM,NUM,EQ]]
+  const stdTextColors=[['#9e4036',UTIL_T,UTIL_T,OP_T],[NUM_T,NUM_T,NUM_T,OP_T],[NUM_T,NUM_T,NUM_T,OP_T],[NUM_T,NUM_T,NUM_T,OP_T],[NUM_T,NUM_T,NUM_T,EQ_T]]
+  const stdActions=[[clear,backspace,()=>sci('+/-'),()=>applyOp('÷')],[()=>appendDigit('7'),()=>appendDigit('8'),()=>appendDigit('9'),()=>applyOp('×')],[()=>appendDigit('4'),()=>appendDigit('5'),()=>appendDigit('6'),()=>applyOp('−')],[()=>appendDigit('1'),()=>appendDigit('2'),()=>appendDigit('3'),()=>applyOp('+')],[()=>appendDigit('0'),()=>appendDigit('.'),()=>null,equals]]
+  return(
     <div className="flex flex-col gap-2 select-none">
-      {/* Display */}
       <div className="rounded-xl p-4" style={{backgroundColor:'#0d1117',minHeight:'90px'}}>
-        <p className="text-xs text-right mb-1 truncate" style={{color:'#4ae176',fontFamily:'monospace',minHeight:'18px'}}>
-          {expression || '\u00a0'}
-        </p>
-        <p className={`text-right font-black tabular-nums truncate ${error?'text-red-400':''}`}
-          style={{fontFamily:'Manrope,sans-serif',fontSize:display.length>12?'1.4rem':'2rem',color:error?'#ff6b6b':'#ffffff',lineHeight:1.1}}>
-          {display}
-        </p>
+        <p className="text-xs text-right mb-1 truncate" style={{color:'#4ae176',fontFamily:'monospace',minHeight:'18px'}}>{prev&&op?`${prev} ${op}`:'\u00a0'}</p>
+        <p className="text-right font-black tabular-nums truncate" style={{fontFamily:'Manrope,sans-serif',fontSize:display.length>12?'1.4rem':'2rem',color:error?'#ff6b6b':'#ffffff',lineHeight:1.1}}>{display}</p>
         <p className="text-right text-xs mt-1" style={{color:'#3d4a3d'}}>{isDeg?'DEG':'RAD'} mode</p>
       </div>
-
-      {/* Scientific rows (5-col) */}
-      {rows.slice(0,3).map((row,ri)=>(
+      {sciRows.map((row,ri)=>(
         <div key={ri} className="grid gap-1.5" style={{gridTemplateColumns:'repeat(5,1fr)'}}>
           {row.map((btn,bi)=>(
-            <motion.button key={bi} whileTap={{scale:0.88}} onClick={btn.action}
-              className="py-2.5 rounded-lg font-bold text-xs transition-colors"
-              style={{backgroundColor:btn.color,color:btn.textColor}}>
-              {btn.label}
+            <motion.button key={bi} whileTap={{scale:0.88}} onClick={sciActions[ri][bi]}
+              className="py-2.5 rounded-lg font-bold text-xs"
+              style={{backgroundColor:sciColors[ri][bi],color:sciTextColors[ri][bi]}}>
+              {btn}
             </motion.button>
           ))}
         </div>
       ))}
-
-      {/* Divider */}
       <div style={{height:'1px',backgroundColor:'#e7e8e9',margin:'4px 0'}}/>
-
-      {/* Standard rows (4-col) */}
-      {rows.slice(3).map((row,ri)=>(
+      {stdRows.map((row,ri)=>(
         <div key={ri} className="grid gap-1.5" style={{gridTemplateColumns:'repeat(4,1fr)'}}>
           {row.map((btn,bi)=>(
-            <motion.button key={bi} whileTap={{scale:0.88}} onClick={btn.action}
-              className="py-3.5 rounded-xl font-bold text-sm transition-colors"
-              style={{backgroundColor:btn.color,color:btn.textColor,fontFamily:'Manrope,sans-serif'}}>
-              {btn.label}
+            btn===''?<div key={bi}/>:
+            <motion.button key={bi} whileTap={{scale:0.88}} onClick={stdActions[ri][bi]||undefined}
+              className="py-3.5 rounded-xl font-bold text-sm"
+              style={{backgroundColor:stdColors[ri][bi],color:stdTextColors[ri][bi],fontFamily:'Manrope,sans-serif'}}>
+              {btn}
             </motion.button>
           ))}
         </div>
@@ -273,7 +105,6 @@ function Calculator() {
   )
 }
 
-// ── Notepad ───────────────────────────────────────────────────────
 function Notepad(){
   const [note,setNote]=useState('')
   return(
@@ -287,7 +118,7 @@ function Notepad(){
         </motion.button>
       </div>
       <textarea value={note} onChange={e=>setNote(e.target.value)}
-        placeholder="Rough work and calculations. Not submitted with exam."
+        placeholder="Rough work — not submitted."
         style={{width:'100%',minHeight:'300px',backgroundColor:'#f3f4f5',border:'1.5px solid #e7e8e9',borderRadius:'0.75rem',padding:'12px 14px',fontFamily:'Inter,sans-serif',fontSize:'0.9rem',color:'#191c1d',lineHeight:1.7,resize:'none',outline:'none'}}
         onFocus={e=>(e.target.style.borderColor='#006e2f')}
         onBlur={e=>(e.target.style.borderColor='#e7e8e9')}/>
@@ -296,7 +127,6 @@ function Notepad(){
   )
 }
 
-// ── Resources Panel ───────────────────────────────────────────────
 function ResourcesPanel({open,onClose}:{open:boolean;onClose:()=>void}){
   const [tab,setTab]=useState<'calc'|'notepad'>('calc')
   return(
@@ -346,7 +176,6 @@ function ResourcesPanel({open,onClose}:{open:boolean;onClose:()=>void}){
   )
 }
 
-// ── Submit Modal ──────────────────────────────────────────────────
 function SubmitModal({answered,flagged,total,onConfirm,onCancel}:{answered:number;flagged:number;total:number;onConfirm:()=>void;onCancel:()=>void}){
   const unanswered=total-answered
   return(
@@ -385,13 +214,24 @@ function SubmitModal({answered,flagged,total,onConfirm,onCancel}:{answered:numbe
   )
 }
 
-// ── Main Page ─────────────────────────────────────────────────────
 export default function ExamPage(){
-  const navigate=useNavigate()
+  const navigate  = useNavigate()
+  const location  = useLocation()
+
+  // ── Read subject from router state ─────────────────────────────
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const subjectData    = (location.state as any)?.subject
+  const subjectName    = subjectData?.name      ?? 'Mathematics'
+  const examDuration   = subjectData?.time      ? subjectData.time * 60 : 60 * 60
+  const totalQCount    = Math.min(subjectData?.questions ?? 20, ALL_QUESTIONS.length)
+  // Slice questions to the count configured for this subject (max 20 for now)
+  const QUESTIONS      = ALL_QUESTIONS.slice(0, totalQCount)
+  const TOTAL          = QUESTIONS.length
+
   const [current,setCurrent]=useState(0)
   const [answers,setAnswers]=useState<Record<number,number>>({})
   const [flagged,setFlagged]=useState<Set<number>>(new Set())
-  const [timeLeft,setTimeLeft]=useState(DURATION)
+  const [timeLeft,setTimeLeft]=useState(examDuration)
   const [showSubmit,setShowSubmit]=useState(false)
   const [showResources,setShowResources]=useState(false)
   const [fontSize,setFontSize]=useState(18)
@@ -402,18 +242,18 @@ export default function ExamPage(){
   const isWarning=timeLeft<300
 
   const submitExam=useCallback(()=>{
-    const secondsUsed=DURATION-timeLeft
-    const mins=Math.floor(secondsUsed/60), secs=secondsUsed%60
+    const secondsUsed=examDuration-timeLeft
+    const mins=Math.floor(secondsUsed/60),secs=secondsUsed%60
     const timeUsed=`${mins}m ${String(secs).padStart(2,'0')}s`
     let correct=0,incorrect=0,unanswered=0
     QUESTIONS.forEach(q=>{
-      if(answers[q.id]===undefined) unanswered++
-      else if(answers[q.id]===CORRECT_ANSWERS[q.id]) correct++
+      if(answers[q.id]===undefined)unanswered++
+      else if(answers[q.id]===CORRECT_ANSWERS[q.id])correct++
       else incorrect++
     })
     const score=Math.round((correct/TOTAL)*100)
-    navigate('/result',{state:{correct,incorrect,unanswered,score,total:TOTAL,timeUsed,subject:'Mathematics'}})
-  },[answers,timeLeft,navigate])
+    navigate('/result',{state:{correct,incorrect,unanswered,score,total:TOTAL,timeUsed,subject:subjectName}})
+  },[answers,timeLeft,navigate,examDuration,QUESTIONS,TOTAL,subjectName])
 
   useEffect(()=>{
     if(timeLeft<=0){submitExam();return}
@@ -449,7 +289,7 @@ export default function ExamPage(){
 
       <div className="min-h-screen" style={{backgroundColor:'#f8f9fa',fontFamily:'Inter,sans-serif'}}>
 
-        {/* Navbar */}
+        {/* Navbar — single timer */}
         <nav className="sticky top-0 z-30 flex items-center justify-between px-5 md:px-8 h-16"
           style={{backgroundColor:'rgba(255,255,255,0.9)',backdropFilter:'blur(16px)',WebkitBackdropFilter:'blur(16px)',boxShadow:'0 1px 0 rgba(188,203,185,0.3)'}}>
           <div className="flex items-center gap-3">
@@ -465,7 +305,7 @@ export default function ExamPage(){
             </motion.button>
           </div>
 
-          {/* Timer — navbar only, no duplicate */}
+          {/* Timer */}
           <motion.div animate={isWarning?{scale:[1,1.04,1]}:{}} transition={{repeat:Infinity,duration:1}}
             className="flex items-center gap-2 px-4 py-2 rounded-xl"
             style={{backgroundColor:isWarning?'rgba(158,64,54,0.09)':'#e7e8e9',border:isWarning?'1px solid rgba(158,64,54,0.25)':'none'}}>
@@ -488,11 +328,15 @@ export default function ExamPage(){
 
         <main className="max-w-screen-xl mx-auto px-4 md:px-8 py-6 grid grid-cols-12 gap-6">
 
-          {/* Header */}
+          {/* Header — shows actual subject name */}
           <header className="col-span-12 mb-2">
             <div className="mb-4">
-              <span className="text-xs font-bold uppercase tracking-widest block mb-1" style={{color:'#006e2f'}}>Mathematics — School CBT</span>
-              <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight" style={{fontFamily:'Manrope,sans-serif',color:'#191c1d'}}>Algebra & Number Theory</h1>
+              <span className="text-xs font-bold uppercase tracking-widest block mb-1" style={{color:'#006e2f'}}>
+                {subjectName} — School CBT
+              </span>
+              <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight" style={{fontFamily:'Manrope,sans-serif',color:'#191c1d'}}>
+                {subjectName} Examination
+              </h1>
             </div>
             <div className="w-full h-2.5 rounded-full overflow-hidden" style={{backgroundColor:'#e7e8e9'}}>
               <motion.div animate={{width:`${((current+1)/TOTAL)*100}%`}} transition={{duration:0.4}}
@@ -504,7 +348,7 @@ export default function ExamPage(){
             </div>
           </header>
 
-          {/* Question */}
+          {/* Question card */}
           <section className="col-span-12 lg:col-span-8 space-y-3">
             <AnimatePresence mode="wait">
               <motion.div key={current} initial={{opacity:0,x:20}} animate={{opacity:1,x:0}} exit={{opacity:0,x:-20}} transition={{duration:0.22}}
@@ -576,7 +420,7 @@ export default function ExamPage(){
               <span className="text-xs font-medium" style={{color:'#6d7b6c'}}>Text size:</span>
               {([{v:16,l:'S'},{v:18,l:'M'},{v:20,l:'L'},{v:22,l:'XL'}]).map(({v,l})=>(
                 <button key={v} onClick={()=>setFontSize(v)}
-                  className="w-7 h-7 rounded-full text-xs font-bold transition-all"
+                  className="w-7 h-7 rounded-full text-xs font-bold"
                   style={{backgroundColor:fontSize===v?'#006e2f':'#e7e8e9',color:fontSize===v?'#fff':'#3d4a3d'}}>
                   {l}
                 </button>
@@ -606,7 +450,7 @@ export default function ExamPage(){
                   const s=nodeStyle(qItem.id)
                   return(
                     <motion.button key={qItem.id} whileTap={{scale:0.88}} onClick={()=>setCurrent(idx)}
-                      className="aspect-square rounded-full flex items-center justify-center text-xs font-black transition-all"
+                      className="aspect-square rounded-full flex items-center justify-center text-xs font-black"
                       style={{backgroundColor:s.bg,color:s.color,border:s.border,fontFamily:'Manrope,sans-serif'}}>
                       {idx+1}
                     </motion.button>
