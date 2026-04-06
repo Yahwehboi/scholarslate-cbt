@@ -1,0 +1,94 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap');
+
+@theme {
+  --color-primary: #006e2f;
+  --color-on-primary: #ffffff;
+  --color-primary-container: #22c55e;
+  --color-on-primary-container: #004b1e;
+  --color-primary-fixed: #6bff8f;
+  --color-primary-fixed-dim: #4ae176;
+  --color-on-primary-fixed: #002109;
+  --color-on-primary-fixed-variant: #005321;
+  --color-secondary: #2f6a3c;
+  --color-on-secondary: #ffffff;
+  --color-secondary-container: #afefb4;
+  --color-on-secondary-container: #346e40;
+  --color-tertiary: #9e4036;
+  --color-on-tertiary: #ffffff;
+  --color-tertiary-container: #ff8b7c;
+  --color-on-tertiary-container: #76231b;
+  --color-error: #ba1a1a;
+  --color-on-error: #ffffff;
+  --color-error-container: #ffdad6;
+  --color-on-error-container: #93000a;
+  --color-background: #f8f9fa;
+  --color-on-background: #191c1d;
+  --color-surface: #f8f9fa;
+  --color-surface-dim: #d9dadb;
+  --color-surface-bright: #f8f9fa;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #f3f4f5;
+  --color-surface-container: #edeeef;
+  --color-surface-container-high: #e7e8e9;
+  --color-surface-container-highest: #e1e3e4;
+  --color-surface-variant: #e1e3e4;
+  --color-on-surface: #191c1d;
+  --color-on-surface-variant: #3d4a3d;
+  --color-outline: #6d7b6c;
+  --color-outline-variant: #bccbb9;
+  --color-inverse-surface: #2e3132;
+  --color-inverse-on-surface: #f0f1f2;
+  --color-inverse-primary: #4ae176;
+
+  --font-headline: "Manrope", sans-serif;
+  --font-body: "Inter", sans-serif;
+
+  --radius-xl: 0.5rem;
+  --radius-2xl: 1rem;
+  --radius-full: 9999px;
+
+  --shadow-ambient: 0px 12px 32px rgba(25, 28, 29, 0.04);
+  --shadow-ambient-md: 0px 8px 24px rgba(25, 28, 29, 0.08);
+}
+
+@layer base {
+  body {
+    background-color: var(--color-background);
+    color: var(--color-on-surface);
+    font-family: var(--font-body);
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-headline);
+  }
+}
+
+@layer components {
+  .glass-panel {
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+  .material-symbols-outlined {
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  }
+  .input-flushed {
+    width: 100%;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid rgba(188, 203, 185, 0.4);
+    padding: 8px 0;
+    color: var(--color-on-surface);
+    font-family: var(--font-body);
+    transition: border-color 0.2s;
+  }
+  .input-flushed:focus {
+    outline: none;
+    border-bottom: 2px solid var(--color-primary);
+  }
+  .input-flushed::placeholder {
+    color: var(--color-on-surface-variant);
+    opacity: 0.6;
+  }
+}
