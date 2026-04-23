@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
+import { formatClassLabel, getUserInitials } from '../lib/auth'
 
 const Ic = {
   school:    <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3zM5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z"/></svg>,
@@ -20,6 +22,7 @@ const Ic = {
 
 function Sidebar({open,onClose}:{open:boolean;onClose:()=>void}){
   const navigate=useNavigate(), location=useLocation()
+  const { logout } = useAuth()
   const navItems=[{icon:Ic.dashboard,label:'Dashboard',path:'/dashboard'},{icon:Ic.book,label:'Subjects',path:'/select-subject'},{icon:Ic.results,label:'Results',path:'/results-history'},{icon:Ic.profile,label:'Profile',path:'/profile'}]
   return(
     <>
@@ -53,7 +56,11 @@ function Sidebar({open,onClose}:{open:boolean;onClose:()=>void}){
               style={{color:'#3d4a3d',fontFamily:'Inter,sans-serif',borderRadius:'0.5rem'}}
               onMouseEnter={e=>((e.currentTarget as HTMLElement).style.backgroundColor='#e7e8e9')}
               onMouseLeave={e=>((e.currentTarget as HTMLElement).style.backgroundColor='transparent')}
-              onClick={()=>label==='Logout'&&navigate('/login')}>
+              onClick={()=>{
+                if(label!=='Logout') return
+                logout()
+                navigate('/login', { replace: true })
+              }}>
               {icon}<span>{label}</span>
             </button>
           ))}
@@ -76,6 +83,7 @@ function CountUp({target,duration=1200}:{target:number;duration?:number}){
 export default function ResultPage(){
   const navigate=useNavigate()
   const location=useLocation()
+  const { session } = useAuth()
   const [sidebarOpen,setSidebarOpen]=useState(false)
 
   // Real data from ExamPage via router state
@@ -84,11 +92,13 @@ export default function ResultPage(){
   const incorrect  = state?.incorrect  ?? 0
   const unanswered = state?.unanswered ?? 0
   const score      = state?.score      ?? 0
-  const total      = state?.total      ?? 20
   const timeUsed   = state?.timeUsed   ?? '—'
   const subject    = state?.subject    ?? 'Mathematics'
   const passed     = score >= 50
   const peerRank   = Math.max(5, 100 - score)
+  const studentName = session?.role === 'student' ? session.fullName : 'Student'
+  const studentClass = session?.role === 'student' ? formatClassLabel(session.className) : ''
+  const studentInitials = getUserInitials(studentName)
 
   const handlePrint=()=>{
     const style=document.createElement('style')
@@ -116,10 +126,10 @@ export default function ResultPage(){
           </div>
           <div className="flex items-center gap-3">
             <div className="text-right hidden sm:block">
-              <p className="text-sm font-bold leading-none" style={{color:'#191c1d'}}>Amina Yusuf</p>
-              <p className="text-[10px] uppercase tracking-tight mt-0.5" style={{color:'#6d7b6c'}}>SS2 • Science</p>
+              <p className="text-sm font-bold leading-none" style={{color:'#191c1d'}}>{studentName}</p>
+              <p className="text-[10px] uppercase tracking-tight mt-0.5" style={{color:'#6d7b6c'}}>{studentClass}</p>
             </div>
-            <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold" style={{background:'linear-gradient(135deg,#006e2f,#22c55e)'}}>AY</div>
+            <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold" style={{background:'linear-gradient(135deg,#006e2f,#22c55e)'}}>{studentInitials}</div>
           </div>
         </header>
 

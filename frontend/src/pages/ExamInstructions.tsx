@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
+import { formatClassLabel, getUserInitials } from '../lib/auth'
 
 const Ic = {
   school:    <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3zM5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z"/></svg>,
@@ -84,6 +86,7 @@ function RuleItem({ icon, title, desc, delay }: { icon: React.ReactNode; title: 
 export default function InstructionsPage() {
   const navigate   = useNavigate()
   const location   = useLocation()
+  const { session } = useAuth()
   const [agreed,   setAgreed]   = useState(false)
   const [showModal, setShowModal] = useState(false)
 
@@ -97,6 +100,9 @@ export default function InstructionsPage() {
   const attemptsUsed    = subjectData?.attemptsUsed  ?? 0
   const maxAttempts     = subjectData?.maxAttempts   ?? 2
   const attemptLabel    = `${attemptsUsed + 1} of ${maxAttempts}`
+  const studentName = session?.role === 'student' ? session.fullName : 'Student'
+  const studentClass = session?.role === 'student' ? formatClassLabel(session.className) : ''
+  const studentInitials = getUserInitials(studentName)
 
   const rules = [
     { icon: Ic.list,       title: 'Total Questions',    desc: `This examination contains ${subjectQuestions} multiple-choice questions. All questions carry equal marks.` },
@@ -134,11 +140,11 @@ export default function InstructionsPage() {
           </div>
           <div className="flex items-center gap-3">
             <div className="text-right hidden sm:block">
-              <p className="text-sm font-bold leading-none" style={{ color: '#191c1d' }}>Amina Yusuf</p>
-              <p className="text-[10px] uppercase tracking-tight mt-0.5" style={{ color: '#6d7b6c' }}>SS2 • Science</p>
+              <p className="text-sm font-bold leading-none" style={{ color: '#191c1d' }}>{studentName}</p>
+              <p className="text-[10px] uppercase tracking-tight mt-0.5" style={{ color: '#6d7b6c' }}>{studentClass}</p>
             </div>
             <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold"
-              style={{ background: 'linear-gradient(135deg,#006e2f,#22c55e)' }}>AY</div>
+              style={{ background: 'linear-gradient(135deg,#006e2f,#22c55e)' }}>{studentInitials}</div>
           </div>
         </header>
 
@@ -209,12 +215,12 @@ export default function InstructionsPage() {
                     <div className="text-center">
                       <div className="w-16 h-16 rounded-full mx-auto mb-3 flex items-center justify-center text-white text-xl font-black"
                         style={{ background: 'linear-gradient(135deg,#006e2f,#22c55e)', boxShadow: '0 4px 16px rgba(34,197,94,0.25)' }}>
-                        AY
+                        {studentInitials}
                       </div>
                       <h3 className="font-bold text-base" style={{ color: '#191c1d', fontFamily: 'Manrope,sans-serif' }}>
-                        Amina Yusuf
+                        {studentName}
                       </h3>
-                      <p className="text-xs font-medium" style={{ color: '#6d7b6c' }}>SS2 • Science Class</p>
+                      <p className="text-xs font-medium" style={{ color: '#6d7b6c' }}>{studentClass} Class</p>
                     </div>
 
                     {/* Exam details — dynamically built from subject data */}

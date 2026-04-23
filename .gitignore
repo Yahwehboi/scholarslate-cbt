@@ -12,6 +12,21 @@ dist
 dist-ssr
 *.local
 
+# Environment and secrets
+.env
+.env.*
+!.env.example
+backend/.env
+frontend/.env
+*.pem
+*.key
+
+# Backend runtime data
+backend/data/
+*.db
+*.db-shm
+*.db-wal
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
 
 const Ic = {
   admin:    <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg>,
@@ -63,9 +64,19 @@ function AdminSidebar({ open, onClose }: { open: boolean; onClose: () => void })
     { icon: Ic.admin,    label: 'Admin Home',      path: '/admin' },
     { icon: Ic.upload,   label: 'Upload Questions', path: '/admin/upload' },
     { icon: Ic.settings, label: 'Subjects Control', path: '/admin' },
-    { icon: Ic.analytics,label: 'View Results',     path: '/results-history' },
-    { icon: Ic.students, label: 'Students',         path: '/admin' },
+    { icon: Ic.analytics,label: 'View Results',     path: '/admin/results' },
+    { icon: Ic.students, label: 'Students',         path: '/admin/students' },
   ]
+
+  const activeLabelMap: Record<string, string> = {
+    '/admin': 'Subjects Control',
+    '/admin/upload': 'Upload Questions',
+    '/admin/students': 'Students',
+    '/admin/results': 'View Results',
+  }
+
+  const activeLabel = activeLabelMap[location.pathname] ?? ''
+
   return (
     <>
       {open && <div className="fixed inset-0 z-30 md:hidden" style={{ backgroundColor: 'rgba(25,28,29,0.4)', backdropFilter: 'blur(4px)' }} onClick={onClose} />}
@@ -80,7 +91,7 @@ function AdminSidebar({ open, onClose }: { open: boolean; onClose: () => void })
         </div>
         <nav className="flex-1 mt-2 flex flex-col">
           {navItems.map(({ icon, label, path }) => {
-            const active = location.pathname === path && (label === 'Admin Home' || label === 'Subjects Control')
+            const active = label === activeLabel
             return (
               <button key={label} onClick={() => { navigate(path); onClose() }}
                 className="flex items-center gap-3 py-3 px-6 text-left transition-all duration-200"
@@ -125,6 +136,7 @@ const ICON_OPTIONS = [
 
 export default function AdminControlPage() {
   const navigate = useNavigate()
+  const { logout } = useAuth()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [hasChanges, setHasChanges] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -171,6 +183,10 @@ export default function AdminControlPage() {
 
   const activeCount = subjects.filter(s => s.active).length
   const avgTime = Math.round(subjects.reduce((s, r) => s + r.time, 0) / (subjects.length || 1))
+  const handleLogout = () => {
+    logout()
+    navigate('/login', { replace: true })
+  }
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#f8f9fa' }}>
@@ -186,7 +202,7 @@ export default function AdminControlPage() {
           </div>
           <div className="flex items-center gap-4">
             <span className="text-sm font-medium hidden sm:block" style={{ color: '#3d4a3d' }}>Administrator</span>
-            <button onClick={() => navigate('/login')} className="text-sm font-bold" style={{ color: '#006e2f' }}>Logout</button>
+            <button onClick={handleLogout} className="text-sm font-bold" style={{ color: '#006e2f' }}>Logout</button>
           </div>
         </header>
 

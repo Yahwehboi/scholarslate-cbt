@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
+import { formatClassLabel, getUserInitials } from '../lib/auth'
 
 const Ic = {
   school:    <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3zM5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z"/></svg>,
@@ -21,6 +23,7 @@ const Ic = {
 
 function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const navigate = useNavigate(), location = useLocation()
+  const { logout } = useAuth()
   const navItems = [
     { icon: Ic.dashboard, label: 'Dashboard',  path: '/dashboard' },
     { icon: Ic.book,      label: 'Subjects',   path: '/select-subject' },
@@ -59,7 +62,11 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
               style={{ color: '#3d4a3d', fontFamily: 'Inter,sans-serif', borderRadius: '0.5rem' }}
               onMouseEnter={e => ((e.currentTarget as HTMLElement).style.backgroundColor = '#e7e8e9')}
               onMouseLeave={e => ((e.currentTarget as HTMLElement).style.backgroundColor = 'transparent')}
-              onClick={() => label === 'Logout' && navigate('/login')}>
+              onClick={() => {
+                if (label !== 'Logout') return
+                logout()
+                navigate('/login', { replace: true })
+              }}>
               {icon}<span>{label}</span>
             </button>
           ))}
@@ -96,14 +103,22 @@ function Field({ label, value, onChange, type = 'text', readOnly = false }:
 }
 
 export default function StudentProfilePage() {
+  const { session } = useAuth()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [saved, setSaved] = useState(false)
   const [showPwModal, setShowPwModal] = useState(false)
+  const studentName = session?.role === 'student' ? session.fullName : 'Student'
+  const studentEmail = session?.role === 'student' ? session.email : ''
+  const studentPhone = session?.role === 'student' ? session.phone : ''
+  const studentId = session?.role === 'student' ? session.studentId : '—'
+  const studentClass = session?.role === 'student' ? session.className : ''
+  const studentClassLabel = session?.role === 'student' ? formatClassLabel(session.className) : ''
+  const studentInitials = getUserInitials(studentName)
 
   const [form, setForm] = useState({
-    fullName: 'Amina Yusuf',
-    email: 'amina.yusuf@example.com',
-    phone: '+234 803 456 7890',
+    fullName: studentName,
+    email: studentEmail,
+    phone: studentPhone,
     address: '12 Maitama Street, Abuja',
   })
 
@@ -150,10 +165,10 @@ export default function StudentProfilePage() {
           </div>
           <div className="flex items-center gap-3">
             <div className="text-right hidden sm:block">
-              <p className="text-sm font-bold leading-none" style={{ color: '#191c1d' }}>Amina Yusuf</p>
-              <p className="text-[10px] uppercase tracking-tight mt-0.5" style={{ color: '#6d7b6c' }}>SS2 • Science</p>
+              <p className="text-sm font-bold leading-none" style={{ color: '#191c1d' }}>{studentName}</p>
+              <p className="text-[10px] uppercase tracking-tight mt-0.5" style={{ color: '#6d7b6c' }}>{studentClassLabel}</p>
             </div>
-            <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold" style={{ background: 'linear-gradient(135deg,#006e2f,#22c55e)' }}>AY</div>
+            <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold" style={{ background: 'linear-gradient(135deg,#006e2f,#22c55e)' }}>{studentInitials}</div>
           </div>
         </header>
 
@@ -176,20 +191,20 @@ export default function StudentProfilePage() {
                   <div className="relative mb-5">
                     <div className="w-28 h-28 rounded-full flex items-center justify-center text-white text-4xl font-black"
                       style={{ background: 'linear-gradient(135deg,#006e2f,#22c55e)', boxShadow: '0 8px 24px rgba(34,197,94,0.25)' }}>
-                      AY
+                      {studentInitials}
                     </div>
                     <button className="absolute bottom-0 right-0 w-8 h-8 rounded-full flex items-center justify-center text-white"
                       style={{ backgroundColor: '#006e2f' }}>
                       <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
                     </button>
                   </div>
-                  <h3 className="text-xl font-bold text-center mb-1" style={{ fontFamily: 'Manrope,sans-serif', color: '#191c1d' }}>Amina Yusuf</h3>
-                  <p className="text-sm mb-6" style={{ color: '#6d7b6c' }}>amina.yusuf@example.com</p>
+                  <h3 className="text-xl font-bold text-center mb-1" style={{ fontFamily: 'Manrope,sans-serif', color: '#191c1d' }}>{studentName}</h3>
+                  <p className="text-sm mb-6" style={{ color: '#6d7b6c' }}>{studentEmail}</p>
 
                   <div className="w-full space-y-3 pt-5" style={{ borderTop: '1px solid #edeeef' }}>
                     {[
-                      { label: 'Student ID', value: 'SS2/2024/001' },
-                      { label: 'Class', value: 'SS2 Science' },
+                      { label: 'Student ID', value: studentId },
+                      { label: 'Class', value: studentClass },
                       { label: 'Term', value: '2025/2026 First' },
                     ].map(({ label, value }) => (
                       <div key={label} className="flex justify-between items-center text-sm">

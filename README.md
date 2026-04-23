@@ -1,73 +1,76 @@
-# React + TypeScript + Vite
+# ScholarSlate CBT
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+ScholarSlate CBT is structured as an npm workspace monorepo with separate frontend and backend applications.
 
-Currently, two official plugins are available:
+## Project Structure
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- `frontend/`: React + TypeScript + Vite client
+- `backend/`: Express + TypeScript + SQLite (Drizzle) API
+- `PROJECT_EXECUTION_PLAN.md`: phase-by-phase implementation plan
 
-## React Compiler
+## Dependency Strategy
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+This repo uses npm workspaces with a single root `node_modules` folder.
 
-## Expanding the ESLint configuration
+- Install once at project root.
+- Dependencies are declared per workspace in `frontend/package.json` and `backend/package.json`.
+- npm hoists shared dependencies to reduce duplicate installs.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## Setup
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+1. Install dependencies:
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+2. Backend environment:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+cp backend/.env.example backend/.env
 ```
+
+Update `JWT_SECRET` before production use.
+
+## Scripts (Run from Repository Root)
+
+- Start frontend dev server:
+
+```bash
+npm run dev:frontend
+```
+
+- Start backend dev server:
+
+```bash
+npm run dev:backend
+```
+
+- Build frontend:
+
+```bash
+npm run build:frontend
+```
+
+- Build backend:
+
+```bash
+npm run build:backend
+```
+
+- Lint/check both workspaces:
+
+```bash
+npm run lint
+```
+
+## Phase 0 Status
+
+Phase 0 backend foundations are implemented:
+
+- Express app bootstrap
+- Centralized config validation
+- SQLite initialization and core tables
+- JWT utility and auth middleware skeleton
+- Error middleware and 404 handler
+- Health endpoint: `GET /api/health`

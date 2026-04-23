@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
+import { formatClassLabel, getUserInitials } from '../lib/auth'
 
 const Ic = {
   school:  <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3zM5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z"/></svg>,
   timer:   <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M15 1H9v2h6V1zm-4 13h2V8h-2v6zm8.03-6.61l1.42-1.42c-.43-.51-.9-.99-1.41-1.41l-1.42 1.42A8.962 8.962 0 0 0 12 4c-4.97 0-9 4.03-9 9s4.02 9 9 9a8.994 8.994 0 0 0 7.03-14.61zM12 20c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/></svg>,
   flag:    <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6z"/></svg>,
-  prev:    <svg viewBox="0 0 24 24" fill="currentColor" width="18" heighht="18"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>,
+  prev:    <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>,
   next:    <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"/></svg>,
   clear:   <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>,
   submit:  <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>,
@@ -217,6 +219,7 @@ function SubmitModal({answered,flagged,total,onConfirm,onCancel}:{answered:numbe
 export default function ExamPage(){
   const navigate  = useNavigate()
   const location  = useLocation()
+  const { session } = useAuth()
 
   // ── Read subject from router state ─────────────────────────────
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -235,6 +238,9 @@ export default function ExamPage(){
   const [showSubmit,setShowSubmit]=useState(false)
   const [showResources,setShowResources]=useState(false)
   const [fontSize,setFontSize]=useState(18)
+  const studentName = session?.role === 'student' ? session.fullName : 'Student'
+  const studentClass = session?.role === 'student' ? formatClassLabel(session.className) : ''
+  const studentInitials = getUserInitials(studentName)
 
   const q=QUESTIONS[current]
   const answered=Object.keys(answers).length
@@ -319,10 +325,10 @@ export default function ExamPage(){
           <div className="flex items-center gap-2 md:gap-3">
             <button onClick={()=>setShowResources(true)} className="flex md:hidden items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-full" style={{backgroundColor:'#f3f4f5',color:'#3d4a3d'}}>{Ic.calc} Tools</button>
             <div className="text-right hidden sm:block">
-              <p className="text-sm font-bold leading-none" style={{color:'#191c1d'}}>Amina Yusuf</p>
-              <p className="text-[10px] uppercase tracking-tight mt-0.5" style={{color:'#6d7b6c'}}>SS2 • Science</p>
+              <p className="text-sm font-bold leading-none" style={{color:'#191c1d'}}>{studentName}</p>
+              <p className="text-[10px] uppercase tracking-tight mt-0.5" style={{color:'#6d7b6c'}}>{studentClass}</p>
             </div>
-            <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0" style={{background:'linear-gradient(135deg,#006e2f,#22c55e)'}}>AY</div>
+            <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0" style={{background:'linear-gradient(135deg,#006e2f,#22c55e)'}}>{studentInitials}</div>
           </div>
         </nav>
 
