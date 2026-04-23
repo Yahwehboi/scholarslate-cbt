@@ -101,7 +101,7 @@ export default function ResultsHistoryPage(){
   const avgScore=Math.round(HISTORY.reduce((s,r)=>s+r.pct,0)/HISTORY.length)
   const best=Math.max(...HISTORY.map(r=>r.pct))
   const studentName = session?.role === 'student' ? session.fullName : 'Student'
-  const studentClass = session?.role === 'student' ? formatClassLabel(session.className) : ''
+  const studentClass = session?.role === 'student' ? formatClassLabel(session.className ?? '') : ''
   const studentInitials = getUserInitials(studentName)
 
   return(

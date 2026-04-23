@@ -1,8 +1,8 @@
-import { useState, useRef } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { importStudentsFromCsv, loadStudents } from '../lib/auth'
+import { api } from '../lib/apiClient'
 
 const Ic = {
   admin:    <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg>,
@@ -27,13 +27,14 @@ function AdminSidebar({ open, onClose }: { open: boolean; onClose: () => void })
   const navItems = [
     { icon: Ic.admin,    label: 'Admin Home',      path: '/admin' },
     { icon: Ic.upload,   label: 'Upload Questions', path: '/admin/upload' },
-    { icon: Ic.settings, label: 'Subjects Control', path: '/admin' },
+    { icon: Ic.settings, label: 'Subjects Control', path: '/admin/subjects' },
     { icon: Ic.analytics,label: 'View Results',     path: '/admin/results' },
     { icon: Ic.students, label: 'Students',         path: '/admin/students' },
   ]
 
   const activeLabelMap: Record<string, string> = {
-    '/admin': 'Subjects Control',
+    '/admin': 'Admin Home',
+    '/admin/subjects': 'Subjects Control',
     '/admin/upload': 'Upload Questions',
     '/admin/students': 'Students',
     '/admin/results': 'View Results',
@@ -186,7 +187,11 @@ export default function AdminUploadPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<'manual' | 'batch-q' | 'batch-s'>('manual')
   const [toastMsg, setToastMsg] = useState('')
-  const [registeredCount, setRegisteredCount] = useState(() => loadStudents().length)
+  const [registeredCount, setRegisteredCount] = useState(0)
+
+  useEffect(() => {
+    api.students.list({ limit: 1 }).then(r => setRegisteredCount(r.total)).catch(() => {})
+  }, [])
 
   // Manual form
   const [form, setForm] = useState({ subject: '', difficulty: 'Standard', question: '', optA: '', optB: '', optC: '', optD: '', answer: 'A' })
@@ -242,11 +247,9 @@ export default function AdminUploadPage() {
 
     try {
       const csvText = await sFile.text()
-      const result = importStudentsFromCsv(csvText)
-
-      setRegisteredCount(result.total)
-      setSState('done')
-      showToast(`✅ ${result.added} students registered. ${result.duplicates} duplicate ID(s) skipped.`)
+      void csvText // student CSV import endpoint coming in Phase 2
+      setSState('error')
+      showToast('⚠ Student CSV import requires the Phase 2 backend endpoint. Coming soon!')
       setTimeout(() => setSState('idle'), 3000)
     } catch (error) {
       setSState('error')

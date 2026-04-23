@@ -1,8 +1,16 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { loadStudents, type StudentRecord } from '../lib/auth'
+import { api } from '../lib/apiClient'
+
+type StudentRecord = {
+  id: string
+  studentId: string | null
+  fullName: string
+  className: string | null
+  isActive: boolean
+}
 
 const Ic = {
   admin:    <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg>,
@@ -18,13 +26,14 @@ function AdminSidebar({ open, onClose }: { open: boolean; onClose: () => void })
   const navItems = [
     { icon: Ic.admin, label: 'Admin Home', path: '/admin' },
     { icon: Ic.upload, label: 'Upload Questions', path: '/admin/upload' },
-    { icon: Ic.settings, label: 'Subjects Control', path: '/admin' },
+    { icon: Ic.settings, label: 'Subjects Control', path: '/admin/subjects' },
     { icon: Ic.analytics, label: 'View Results', path: '/admin/results' },
     { icon: Ic.students, label: 'Students', path: '/admin/students' },
   ]
 
   const activeLabelMap: Record<string, string> = {
-    '/admin': 'Subjects Control',
+    '/admin': 'Admin Home',
+    '/admin/subjects': 'Subjects Control',
     '/admin/upload': 'Upload Questions',
     '/admin/students': 'Students',
     '/admin/results': 'View Results',
@@ -65,22 +74,22 @@ function StudentsTable({ students }: { students: StudentRecord[] }) {
   return (
     <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#ffffff', boxShadow: '0 4px 20px rgba(25,28,29,0.07)' }}>
       <div className="grid px-6 py-4 text-[11px] font-bold uppercase tracking-widest"
-        style={{ gridTemplateColumns: '1.2fr 1.7fr 1fr 1.2fr 1fr', backgroundColor: '#e7e8e9', color: '#3d4a3d' }}>
+        style={{ gridTemplateColumns: '1.2fr 1.7fr 1fr 1fr', backgroundColor: '#e7e8e9', color: '#3d4a3d' }}>
         <span>Student ID</span>
         <span>Full Name</span>
         <span>Class</span>
-        <span>Email</span>
-        <span>Phone</span>
+        <span>Status</span>
       </div>
 
       {students.map((student, index) => (
-        <div key={student.studentId} className="grid px-6 py-4 items-center"
-          style={{ gridTemplateColumns: '1.2fr 1.7fr 1fr 1.2fr 1fr', borderTop: index === 0 ? 'none' : '1px solid #f3f4f5' }}>
-          <span className="text-xs font-bold" style={{ color: '#006e2f' }}>{student.studentId}</span>
+        <div key={student.id} className="grid px-6 py-4 items-center"
+          style={{ gridTemplateColumns: '1.2fr 1.7fr 1fr 1fr', borderTop: index === 0 ? 'none' : '1px solid #f3f4f5' }}>
+          <span className="text-xs font-bold" style={{ color: '#006e2f' }}>{student.studentId ?? '—'}</span>
           <span className="text-sm" style={{ color: '#191c1d' }}>{student.fullName}</span>
-          <span className="text-sm" style={{ color: '#3d4a3d' }}>{student.className}</span>
-          <span className="text-sm" style={{ color: '#3d4a3d' }}>{student.email || '—'}</span>
-          <span className="text-sm" style={{ color: '#3d4a3d' }}>{student.phone || '—'}</span>
+          <span className="text-sm" style={{ color: '#3d4a3d' }}>{student.className ?? '—'}</span>
+          <span className="text-xs font-semibold" style={{ color: student.isActive ? '#006e2f' : '#9e4036' }}>
+            {student.isActive ? 'Active' : 'Inactive'}
+          </span>
         </div>
       ))}
     </div>
@@ -92,17 +101,20 @@ export default function AdminStudentsPage() {
   const { logout } = useAuth()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [query, setQuery] = useState('')
+  const [students, setStudents] = useState<StudentRecord[]>([])
+  const [fetchError, setFetchError] = useState<string | null>(null)
 
-  const students = useMemo(() => loadStudents(), [])
+  useEffect(() => {
+    setFetchError(null)
+    api.students.list({ q: query || undefined })
+      .then(res => setStudents(res.students))
+      .catch(err => setFetchError(err instanceof Error ? err.message : 'Failed to load students.'))
+  }, [query])
 
-  const filteredStudents = students.filter(student => {
-    const haystack = `${student.studentId} ${student.fullName} ${student.className}`.toLowerCase()
-    return haystack.includes(query.toLowerCase())
-  })
+  const filteredStudents = students
 
   const handleLogout = () => {
-    logout()
-    navigate('/login', { replace: true })
+    logout().then(() => navigate('/login', { replace: true }))
   }
 
   return (
@@ -148,7 +160,12 @@ export default function AdminStudentsPage() {
             </div>
           </div>
 
-          {filteredStudents.length > 0 ? (
+          {fetchError ? (
+            <div className="p-10 rounded-2xl text-center" style={{ backgroundColor: '#fff5f5', boxShadow: '0 4px 20px rgba(25,28,29,0.07)' }}>
+              <p className="text-lg font-bold" style={{ color: '#9e4036' }}>Failed to load students</p>
+              <p className="text-sm mt-1" style={{ color: '#6d7b6c' }}>{fetchError}</p>
+            </div>
+          ) : filteredStudents.length > 0 ? (
             <StudentsTable students={filteredStudents} />
           ) : (
             <div className="p-10 rounded-2xl text-center" style={{ backgroundColor: '#ffffff', boxShadow: '0 4px 20px rgba(25,28,29,0.07)' }}>

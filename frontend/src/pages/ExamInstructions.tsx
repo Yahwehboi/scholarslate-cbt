@@ -101,7 +101,7 @@ export default function InstructionsPage() {
   const maxAttempts     = subjectData?.maxAttempts   ?? 2
   const attemptLabel    = `${attemptsUsed + 1} of ${maxAttempts}`
   const studentName = session?.role === 'student' ? session.fullName : 'Student'
-  const studentClass = session?.role === 'student' ? formatClassLabel(session.className) : ''
+  const studentClass = session?.role === 'student' ? formatClassLabel(session.className ?? '') : ''
   const studentInitials = getUserInitials(studentName)
 
   const rules = [

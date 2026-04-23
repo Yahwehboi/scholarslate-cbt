@@ -63,13 +63,14 @@ function AdminSidebar({ open, onClose }: { open: boolean; onClose: () => void })
   const navItems = [
     { icon: Ic.admin,    label: 'Admin Home',      path: '/admin' },
     { icon: Ic.upload,   label: 'Upload Questions', path: '/admin/upload' },
-    { icon: Ic.settings, label: 'Subjects Control', path: '/admin' },
+    { icon: Ic.settings, label: 'Subjects Control', path: '/admin/subjects' },
     { icon: Ic.analytics,label: 'View Results',     path: '/admin/results' },
     { icon: Ic.students, label: 'Students',         path: '/admin/students' },
   ]
 
   const activeLabelMap: Record<string, string> = {
-    '/admin': 'Subjects Control',
+    '/admin': 'Admin Home',
+    '/admin/subjects': 'Subjects Control',
     '/admin/upload': 'Upload Questions',
     '/admin/students': 'Students',
     '/admin/results': 'View Results',
@@ -184,8 +185,7 @@ export default function AdminControlPage() {
   const activeCount = subjects.filter(s => s.active).length
   const avgTime = Math.round(subjects.reduce((s, r) => s + r.time, 0) / (subjects.length || 1))
   const handleLogout = () => {
-    logout()
-    navigate('/login', { replace: true })
+    logout().then(() => navigate('/login', { replace: true }))
   }
 
   return (

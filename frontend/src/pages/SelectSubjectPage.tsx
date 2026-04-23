@@ -127,7 +127,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
 function TopBar({ onMenuClick }: { onMenuClick: () => void }) {
   const { session } = useAuth()
   const studentName = session?.role === 'student' ? session.fullName : 'Student'
-  const studentClass = session?.role === 'student' ? formatClassLabel(session.className) : ''
+  const studentClass = session?.role === 'student' ? formatClassLabel(session.className ?? '') : ''
   const studentInitials = getUserInitials(studentName)
 
   return (
