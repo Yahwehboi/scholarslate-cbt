@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { useNavigate } from 'react-router-dom'
+import { Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { demoAdmin, useAuth } from '../context/AuthContext'
 
 // ─── SVG Icons (inline — no font dependency) ──────────────────────
 const Icons = {
@@ -146,24 +147,72 @@ function LoginHero() {
 // ─── Login form (Student ID only) ─────────────────────────────────
 function LoginForm() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const { loginAdmin, loginStudent, session } = useAuth()
   const [studentId, setStudentId] = useState('')
+  const [adminUsername, setAdminUsername] = useState('admin')
+  const [adminPassword, setAdminPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [isAdminLoading, setIsAdminLoading] = useState(false)
   const [error, setError] = useState('')
+  const [adminError, setAdminError] = useState('')
   const [isFocused, setIsFocused] = useState(false)
+
+  const fromPath =
+    typeof location.state === 'object' && location.state !== null && 'from' in location.state
+      ? String(location.state.from)
+      : null
+
+  if (session) {
+    const fallback = session.role === 'admin' ? '/admin' : '/dashboard'
+    return <Navigate to={fromPath ?? fallback} replace />
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
-    if (!studentId.trim()) {
+    const normalizedStudentId = studentId.trim().toUpperCase()
+
+    if (!normalizedStudentId) {
       setError('Please enter your Student ID to continue.')
       return
     }
+
     setIsLoading(true)
-    // Simulated login — replace with real API call later
+
     setTimeout(() => {
+      const result = loginStudent(normalizedStudentId)
       setIsLoading(false)
-      navigate('/dashboard')
-    }, 1400)
+
+      if (!result.ok) {
+        setError(result.message)
+        return
+      }
+
+      navigate(fromPath ?? '/dashboard', { replace: true })
+    }, 500)
+  }
+
+  const handleAdminAccess = () => {
+    setAdminError('')
+
+    if (!adminUsername.trim() || !adminPassword) {
+      setAdminError('Enter admin username and password.')
+      return
+    }
+
+    setIsAdminLoading(true)
+    setTimeout(() => {
+      const result = loginAdmin(adminUsername, adminPassword)
+      setIsAdminLoading(false)
+
+      if (!result.ok) {
+        setAdminError(result.message)
+        return
+      }
+
+      navigate('/admin', { replace: true })
+    }, 350)
   }
 
   return (
@@ -238,7 +287,7 @@ function LoginForm() {
               autoComplete="off"
               placeholder="e.g. SS2/2024/001"
               value={studentId}
-              onChange={e => setStudentId(e.target.value)}
+              onChange={e => setStudentId(e.target.value.toUpperCase())}
               onFocus={() => setIsFocused(true)}
               onBlur={() => setIsFocused(false)}
               style={{
@@ -353,6 +402,74 @@ function LoginForm() {
               {label}
             </button>
           ))}
+        </div>
+
+        <div className="w-full rounded-2xl p-5 flex items-start justify-between gap-4"
+          style={{ backgroundColor: '#f3f4f5', border: '1px solid #e7e8e9' }}>
+          <div className="flex-1">
+            <p className="text-xs font-bold uppercase tracking-widest mb-1"
+              style={{ color: '#6d7b6c', fontFamily: 'Inter, sans-serif' }}>
+              Admin Access
+            </p>
+            <p className="text-sm font-semibold" style={{ color: '#191c1d' }}>
+              Student records are created by the administrator.
+            </p>
+            <p className="text-xs mt-1" style={{ color: '#6d7b6c' }}>
+              Demo admin account: {demoAdmin.username} / admin123
+            </p>
+
+            {adminError && (
+              <p className="text-xs mt-2" style={{ color: '#93000a', fontWeight: 700 }}>
+                {adminError}
+              </p>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
+              <input
+                type="text"
+                value={adminUsername}
+                onChange={e => setAdminUsername(e.target.value)}
+                placeholder="Admin username"
+                style={{
+                  width: '100%',
+                  backgroundColor: '#ffffff',
+                  border: '1px solid #e7e8e9',
+                  borderRadius: '0.6rem',
+                  padding: '8px 10px',
+                  fontSize: '0.85rem',
+                  color: '#191c1d',
+                  outline: 'none',
+                }}
+              />
+              <input
+                type="password"
+                value={adminPassword}
+                onChange={e => setAdminPassword(e.target.value)}
+                placeholder="Admin password"
+                style={{
+                  width: '100%',
+                  backgroundColor: '#ffffff',
+                  border: '1px solid #e7e8e9',
+                  borderRadius: '0.6rem',
+                  padding: '8px 10px',
+                  fontSize: '0.85rem',
+                  color: '#191c1d',
+                  outline: 'none',
+                }}
+              />
+            </div>
+          </div>
+          <motion.button
+            type="button"
+            whileHover={{ scale: isAdminLoading ? 1 : 1.02 }}
+            whileTap={{ scale: isAdminLoading ? 1 : 0.97 }}
+            onClick={handleAdminAccess}
+            className="px-4 py-2 rounded-full text-sm font-bold"
+            style={{ backgroundColor: '#191c1d', color: '#ffffff', border: 'none', opacity: isAdminLoading ? 0.75 : 1 }}
+            disabled={isAdminLoading}
+          >
+            {isAdminLoading ? 'Signing In...' : 'Admin Sign In'}
+          </motion.button>
         </div>
       </motion.div>
     </motion.div>

@@ -1,6 +1,8 @@
 import { useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
+import { importStudentsFromCsv, loadStudents } from '../lib/auth'
 
 const Ic = {
   admin:    <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg>,
@@ -26,9 +28,19 @@ function AdminSidebar({ open, onClose }: { open: boolean; onClose: () => void })
     { icon: Ic.admin,    label: 'Admin Home',      path: '/admin' },
     { icon: Ic.upload,   label: 'Upload Questions', path: '/admin/upload' },
     { icon: Ic.settings, label: 'Subjects Control', path: '/admin' },
-    { icon: Ic.analytics,label: 'View Results',     path: '/results-history' },
-    { icon: Ic.students, label: 'Students',         path: '/admin' },
+    { icon: Ic.analytics,label: 'View Results',     path: '/admin/results' },
+    { icon: Ic.students, label: 'Students',         path: '/admin/students' },
   ]
+
+  const activeLabelMap: Record<string, string> = {
+    '/admin': 'Subjects Control',
+    '/admin/upload': 'Upload Questions',
+    '/admin/students': 'Students',
+    '/admin/results': 'View Results',
+  }
+
+  const activeLabel = activeLabelMap[location.pathname] ?? ''
+
   return (
     <>
       {open && <div className="fixed inset-0 z-30 md:hidden" style={{ backgroundColor: 'rgba(25,28,29,0.4)', backdropFilter: 'blur(4px)' }} onClick={onClose} />}
@@ -43,7 +55,7 @@ function AdminSidebar({ open, onClose }: { open: boolean; onClose: () => void })
         </div>
         <nav className="flex-1 mt-2 flex flex-col">
           {navItems.map(({ icon, label, path }) => {
-            const active = location.pathname === '/admin/upload' && label === 'Upload Questions'
+            const active = label === activeLabel
             return (
               <button key={label} onClick={() => { navigate(path); onClose() }}
                 className="flex items-center gap-3 py-3 px-6 text-left transition-all duration-200"
@@ -170,9 +182,11 @@ type UploadState = 'idle' | 'uploading' | 'done' | 'error'
 
 export default function AdminUploadPage() {
   const navigate = useNavigate()
+  const { logout } = useAuth()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<'manual' | 'batch-q' | 'batch-s'>('manual')
   const [toastMsg, setToastMsg] = useState('')
+  const [registeredCount, setRegisteredCount] = useState(() => loadStudents().length)
 
   // Manual form
   const [form, setForm] = useState({ subject: '', difficulty: 'Standard', question: '', optA: '', optB: '', optC: '', optD: '', answer: 'A' })
@@ -222,14 +236,28 @@ export default function AdminUploadPage() {
     }, 2000)
   }
 
-  const handleStudentUpload = () => {
+  const handleStudentUpload = async () => {
     if (!sFile) { showToast('⚠ Please select a CSV file first.'); return }
     setSState('uploading')
-    setTimeout(() => {
+
+    try {
+      const csvText = await sFile.text()
+      const result = importStudentsFromCsv(csvText)
+
+      setRegisteredCount(result.total)
       setSState('done')
-      showToast(`✅ ${sFile.name} processed! Students will be registered once backend is connected.`)
+      showToast(`✅ ${result.added} students registered. ${result.duplicates} duplicate ID(s) skipped.`)
       setTimeout(() => setSState('idle'), 3000)
-    }, 2000)
+    } catch (error) {
+      setSState('error')
+      showToast(`⚠ ${error instanceof Error ? error.message : 'Unable to process the student CSV.'}`)
+      setTimeout(() => setSState('idle'), 3000)
+    }
+  }
+
+  const handleLogout = () => {
+    logout()
+    navigate('/login', { replace: true })
   }
 
   return (
@@ -260,7 +288,7 @@ export default function AdminUploadPage() {
           </div>
           <div className="flex items-center gap-4">
             <span className="text-sm font-medium hidden sm:block" style={{ color: '#3d4a3d' }}>Administrator</span>
-            <button onClick={() => navigate('/login')} className="text-sm font-bold" style={{ color: '#006e2f' }}>Logout</button>
+            <button onClick={handleLogout} className="text-sm font-bold" style={{ color: '#006e2f' }}>Logout</button>
           </div>
         </header>
 
@@ -466,7 +494,12 @@ export default function AdminUploadPage() {
                       </div>
                       <div className="p-4 rounded-xl" style={{ backgroundColor: 'rgba(158,64,54,0.06)', border: '1px solid rgba(158,64,54,0.15)' }}>
                         <p className="text-xs font-bold uppercase mb-1" style={{ color: '#9e4036' }}>⚠ Important</p>
-                        <p className="text-xs" style={{ color: '#3d4a3d' }}>Student IDs must be unique. Duplicates will be skipped. Default password = Student ID (students should change on first login).</p>
+                        <p className="text-xs" style={{ color: '#3d4a3d' }}>Student IDs must be unique. Duplicates will be skipped. Registered students sign in with only their school-issued Student ID.</p>
+                      </div>
+                      <div className="p-4 rounded-xl" style={{ backgroundColor: '#ffffff', border: '1px solid #e7e8e9' }}>
+                        <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: '#6d7b6c' }}>Registry Status</p>
+                        <p className="text-lg font-extrabold" style={{ color: '#191c1d', fontFamily: 'Manrope,sans-serif' }}>{registeredCount}</p>
+                        <p className="text-xs mt-1" style={{ color: '#6d7b6c' }}>Students currently available for Student ID login.</p>
                       </div>
                       {/* Working download button */}
                       <div className="p-4 rounded-xl flex items-center gap-3" style={{ backgroundColor: '#e8f5ed', border: '1px solid rgba(0,110,47,0.15)' }}>
@@ -493,6 +526,8 @@ export default function AdminUploadPage() {
                         <><span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>{Ic.spinner}</span> Processing...</>
                       ) : sState === 'done' ? (
                         <>{Ic.check} Registered!</>
+                      ) : sState === 'error' ? (
+                        <>Retry Registration</>
                       ) : (
                         <>{Ic.students} Register Students</>
                       )}

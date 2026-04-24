@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
+import { formatClassLabel, getUserInitials } from '../lib/auth'
 
 // ── Types ──────────────────────────────────────────────────────────
 interface NavItem {
@@ -36,6 +38,7 @@ const Ic = {
 function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const navigate = useNavigate()
   const location = useLocation()
+  const { logout } = useAuth()
 
   const navItems: NavItem[] = [
     { icon: Ic.dashboard, label: 'Dashboard', path: '/dashboard' },
@@ -119,7 +122,11 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
               style={{ color: '#3d4a3d', fontFamily: 'Inter, sans-serif', borderRadius: '0.5rem' }}
               onMouseEnter={e => ((e.currentTarget as HTMLElement).style.backgroundColor = '#e7e8e9')}
               onMouseLeave={e => ((e.currentTarget as HTMLElement).style.backgroundColor = 'transparent')}
-              onClick={() => label === 'Logout' && navigate('/login')}
+              onClick={() => {
+                if (label !== 'Logout') return
+                logout()
+                navigate('/login', { replace: true })
+              }}
             >
               {icon}
               <span>{label}</span>
@@ -133,6 +140,11 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
 
 // ── Top bar ────────────────────────────────────────────────────────
 function TopBar({ onMenuClick }: { onMenuClick: () => void }) {
+  const { session } = useAuth()
+  const studentName = session?.role === 'student' ? session.fullName : 'Student'
+  const studentClass = session?.role === 'student' ? formatClassLabel(session.className) : ''
+  const studentInitials = getUserInitials(studentName)
+
   return (
     <header className="sticky top-0 z-20 flex items-center justify-between px-6 md:px-8 h-16"
       style={{
@@ -168,13 +180,13 @@ function TopBar({ onMenuClick }: { onMenuClick: () => void }) {
         {/* Student info */}
         <div className="flex items-center gap-3">
           <div className="text-right hidden sm:block">
-            <p className="text-sm font-bold leading-none" style={{ color: '#191c1d' }}>Amina Yusuf</p>
-            <p className="text-[10px] uppercase tracking-tight mt-0.5" style={{ color: '#6d7b6c' }}>SS2 • Science</p>
+            <p className="text-sm font-bold leading-none" style={{ color: '#191c1d' }}>{studentName}</p>
+            <p className="text-[10px] uppercase tracking-tight mt-0.5" style={{ color: '#6d7b6c' }}>{studentClass}</p>
           </div>
           {/* Avatar initials */}
           <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0"
             style={{ background: 'linear-gradient(135deg,#006e2f,#22c55e)' }}>
-            AY
+            {studentInitials}
           </div>
         </div>
       </div>
@@ -186,7 +198,7 @@ function TopBar({ onMenuClick }: { onMenuClick: () => void }) {
 const fadeUp = (delay: number) => ({
   initial: { opacity: 0, y: 16 },
   animate: { opacity: 1, y: 0 },
-  transition: { delay, duration: 0.4, ease: 'easeOut' },
+  transition: { delay, duration: 0.4, ease: 'easeOut' as const },
 })
 
 function StatCards() {
