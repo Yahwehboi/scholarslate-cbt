@@ -108,11 +108,11 @@ export default function StudentProfilePage() {
   const [saved, setSaved] = useState(false)
   const [showPwModal, setShowPwModal] = useState(false)
   const studentName = session?.role === 'student' ? session.fullName : 'Student'
-  const studentEmail = session?.role === 'student' ? session.email : ''
-  const studentPhone = session?.role === 'student' ? session.phone : ''
+  const studentEmail = ''
+  const studentPhone = ''
   const studentId = session?.role === 'student' ? session.studentId : '—'
   const studentClass = session?.role === 'student' ? session.className : ''
-  const studentClassLabel = session?.role === 'student' ? formatClassLabel(session.className) : ''
+  const studentClassLabel = session?.role === 'student' ? formatClassLabel(session.className ?? '') : ''
   const studentInitials = getUserInitials(studentName)
 
   const [form, setForm] = useState({

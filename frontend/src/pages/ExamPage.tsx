@@ -239,7 +239,7 @@ export default function ExamPage(){
   const [showResources,setShowResources]=useState(false)
   const [fontSize,setFontSize]=useState(18)
   const studentName = session?.role === 'student' ? session.fullName : 'Student'
-  const studentClass = session?.role === 'student' ? formatClassLabel(session.className) : ''
+  const studentClass = session?.role === 'student' ? formatClassLabel(session.className ?? '') : ''
   const studentInitials = getUserInitials(studentName)
 
   const q=QUESTIONS[current]

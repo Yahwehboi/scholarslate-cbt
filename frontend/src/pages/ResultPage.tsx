@@ -97,7 +97,7 @@ export default function ResultPage(){
   const passed     = score >= 50
   const peerRank   = Math.max(5, 100 - score)
   const studentName = session?.role === 'student' ? session.fullName : 'Student'
-  const studentClass = session?.role === 'student' ? formatClassLabel(session.className) : ''
+  const studentClass = session?.role === 'student' ? formatClassLabel(session.className ?? '') : ''
   const studentInitials = getUserInitials(studentName)
 
   const handlePrint=()=>{

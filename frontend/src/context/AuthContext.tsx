@@ -1,82 +1,85 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
 import {
-  buildAdminSession,
-  buildStudentSession,
-  findStudentById,
-  getDefaultAdmin,
   loadSession,
+  performAdminLogin,
+  performLogout,
+  performStudentLogin,
   saveSession,
-  verifyAdminCredentials,
   type AuthSession,
 } from '../lib/auth'
+import { api } from '../lib/apiClient'
 
 type AuthContextValue = {
   session: AuthSession | null
-  loginStudent: (studentId: string) => { ok: true } | { ok: false; message: string }
-  loginAdmin: (username: string, password: string) => { ok: true } | { ok: false; message: string }
-  logout: () => void
+  loading: boolean
+  loginStudent: (studentId: string) => Promise<{ ok: true } | { ok: false; message: string }>
+  loginAdmin: (username: string, password: string) => Promise<{ ok: true } | { ok: false; message: string }>
+  logout: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<AuthSession | null>(null)
+  const [loading, setLoading] = useState(true)
 
+  // On mount: restore from localStorage, then validate token with backend
   useEffect(() => {
-    setSession(loadSession())
-  }, [])
+    const cached = loadSession()
+    if (!cached) {
+      setLoading(false)
+      return
+    }
 
-  const value = useMemo<AuthContextValue>(
-    () => ({
-      session,
-      loginStudent: (studentId: string) => {
-        const student = findStudentById(studentId)
-        if (!student) {
-          return {
-            ok: false,
-            message: 'Student ID not found. Contact your school administrator to get registered.',
-          }
-        }
+    setSession(cached)
 
-        const nextSession = buildStudentSession(student)
-        setSession(nextSession)
-        saveSession(nextSession)
-
-        return { ok: true }
-      },
-      loginAdmin: (username: string, password: string) => {
-        if (!verifyAdminCredentials(username, password)) {
-          return {
-            ok: false,
-            message: 'Invalid admin credentials.',
-          }
-        }
-
-        const nextSession = buildAdminSession()
-        setSession(nextSession)
-        saveSession(nextSession)
-
-        return { ok: true }
-      },
-      logout: () => {
+    api.auth
+      .me()
+      .then(() => {
+        // token still valid — nothing to do
+      })
+      .catch(() => {
+        // token expired or invalid — clear session
         setSession(null)
         saveSession(null)
-      },
-    }),
-    [session],
-  )
+      })
+      .finally(() => setLoading(false))
+  }, [])
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+  async function loginStudent(studentId: string) {
+    const result = await performStudentLogin(studentId)
+    if (result.ok) {
+      setSession(result.session)
+      saveSession(result.session)
+      return { ok: true as const }
+    }
+    return result
+  }
+
+  async function loginAdmin(username: string, password: string) {
+    const result = await performAdminLogin(username, password)
+    if (result.ok) {
+      setSession(result.session)
+      saveSession(result.session)
+      return { ok: true as const }
+    }
+    return result
+  }
+
+  async function logout() {
+    await performLogout()
+    setSession(null)
+  }
+
+  return (
+    <AuthContext.Provider value={{ session, loading, loginStudent, loginAdmin, logout }}>
+      {children}
+    </AuthContext.Provider>
+  )
 }
 
 export function useAuth() {
   const context = useContext(AuthContext)
-
-  if (!context) {
-    throw new Error('useAuth must be used inside an AuthProvider')
-  }
-
+  if (!context) throw new Error('useAuth must be used inside an AuthProvider')
   return context
 }
-
-export const demoAdmin = getDefaultAdmin()

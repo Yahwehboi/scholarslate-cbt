@@ -7,6 +7,7 @@ import ExamPage from './pages/ExamPage'
 import ResultPage from './pages/ResultPage'
 import ResultsHistoryPage from './pages/ResultsHistoryPage'
 import StudentProfilePage from './pages/StudentProfilePage'
+import AdminHomePage from './pages/AdminHomePage'
 import AdminControlPage from './pages/AdminControlPage'
 import AdminUploadPage from './pages/AdminUploadPage'
 import AdminStudentsPage from './pages/AdminStudentsPage'
@@ -30,7 +31,8 @@ function App() {
       </Route>
 
       <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
-        <Route path="/admin" element={<AdminControlPage />} />
+        <Route path="/admin" element={<AdminHomePage />} />
+        <Route path="/admin/subjects" element={<AdminControlPage />} />
         <Route path="/admin/upload" element={<AdminUploadPage />} />
         <Route path="/admin/students" element={<AdminStudentsPage />} />
         <Route path="/admin/results" element={<AdminResultsPage />} />

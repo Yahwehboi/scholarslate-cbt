@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
-import { demoAdmin, useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/AuthContext'
 
 // ─── SVG Icons (inline — no font dependency) ──────────────────────
 const Icons = {
@@ -180,8 +180,7 @@ function LoginForm() {
 
     setIsLoading(true)
 
-    setTimeout(() => {
-      const result = loginStudent(normalizedStudentId)
+    loginStudent(normalizedStudentId).then(result => {
       setIsLoading(false)
 
       if (!result.ok) {
@@ -190,7 +189,10 @@ function LoginForm() {
       }
 
       navigate(fromPath ?? '/dashboard', { replace: true })
-    }, 500)
+    }).catch(() => {
+      setIsLoading(false)
+      setError('Could not reach server. Make sure the backend is running.')
+    })
   }
 
   const handleAdminAccess = () => {
@@ -202,8 +204,7 @@ function LoginForm() {
     }
 
     setIsAdminLoading(true)
-    setTimeout(() => {
-      const result = loginAdmin(adminUsername, adminPassword)
+    loginAdmin(adminUsername, adminPassword).then(result => {
       setIsAdminLoading(false)
 
       if (!result.ok) {
@@ -212,7 +213,10 @@ function LoginForm() {
       }
 
       navigate('/admin', { replace: true })
-    }, 350)
+    }).catch(() => {
+      setIsAdminLoading(false)
+      setAdminError('Could not reach server. Make sure the backend is running.')
+    })
   }
 
   return (
@@ -415,7 +419,7 @@ function LoginForm() {
               Student records are created by the administrator.
             </p>
             <p className="text-xs mt-1" style={{ color: '#6d7b6c' }}>
-              Demo admin account: {demoAdmin.username} / admin123
+              Use your registered admin username and password.
             </p>
 
             {adminError && (
