@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { api, type ApiSubject } from '../lib/apiClient'
 import { formatClassLabel, getUserInitials } from '../lib/auth'
 
 // ── Shared subject config type (mirrors AdminControlPage) ──────────
@@ -15,21 +16,22 @@ export interface SubjectConfig {
   status: SubjectStatus; attemptsUsed: number; duration: string;
 }
 
-const DEFAULT_SUBJECTS: SubjectConfig[] = [
-  { id:1, name:'Mathematics',      code:'MATH-S1',  iconKey:'math',    iconBg:'#e8f5e9', active:true,  time:60, maxAttempts:2, description:'Algebra, calculus, statistics and number theory.',       questions:50, credits:2, status:'not-taken',   attemptsUsed:0, duration:'60 mins' },
-  { id:2, name:'Physics',          code:'PHYS-S1',  iconKey:'science', iconBg:'#e3f2fd', active:true,  time:45, maxAttempts:2, description:'Mechanics, electromagnetism and modern physics.',         questions:50, credits:3, status:'not-taken',   attemptsUsed:0, duration:'45 mins' },
-  { id:3, name:'English Language', code:'ENGL-S1',  iconKey:'english', iconBg:'#fce4ec', active:true,  time:60, maxAttempts:3, description:'Comprehension, grammar and essay composition.',           questions:60, credits:3, status:'in-progress', attemptsUsed:1, duration:'60 mins' },
-  { id:4, name:'Chemistry',        code:'CHEM-S1',  iconKey:'science', iconBg:'#fff3e0', active:false, time:45, maxAttempts:2, description:'Organic reactions, periodic trends and chemical bonding.', questions:50, credits:3, status:'not-taken',   attemptsUsed:0, duration:'45 mins' },
-  { id:5, name:'History',          code:'HIST-S1',  iconKey:'history', iconBg:'#f3e5f5', active:false, time:45, maxAttempts:2, description:'Pre-colonial Africa, independence movements and governance.',questions:40, credits:2, status:'not-taken',   attemptsUsed:0, duration:'45 mins' },
-  { id:6, name:'Biology',          code:'BIO-S1',   iconKey:'science', iconBg:'#e8f5e9', active:true,  time:60, maxAttempts:2, description:'Cell biology, genetics and ecological systems.',            questions:50, credits:4, status:'completed',   attemptsUsed:2, duration:'60 mins' },
-]
-
-const loadSubjects = (): SubjectConfig[] => {
-  try {
-    const saved = localStorage.getItem('cbt_subjects')
-    return saved ? JSON.parse(saved) : DEFAULT_SUBJECTS
-  } catch { return DEFAULT_SUBJECTS }
-}
+const toSubjectConfig = (subject: ApiSubject): SubjectConfig => ({
+  id: subject.id,
+  name: subject.name,
+  code: subject.code,
+  iconKey: subject.iconKey,
+  iconBg: subject.iconBg,
+  active: subject.active,
+  time: subject.timeLimit,
+  maxAttempts: subject.maxAttempts,
+  description: subject.description,
+  questions: subject.questionsCount,
+  credits: subject.credits,
+  status: 'not-taken',
+  attemptsUsed: 0,
+  duration: `${subject.timeLimit} mins`,
+})
 
 // ── SVG Icons ──────────────────────────────────────────────────────
 const Ic = {
@@ -225,14 +227,23 @@ export default function SelectSubjectPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [activeFilter, setActiveFilter] = useState('All')
+  const [loadingSubjects, setLoadingSubjects] = useState(true)
+  const [loadError, setLoadError] = useState('')
 
-  // Load subjects from localStorage (set by AdminControlPage)
   const [subjects, setSubjects] = useState<SubjectConfig[]>([])
 
   useEffect(() => {
-    const loaded = loadSubjects()
-    // Only show active subjects on student page
-    setSubjects(loaded)
+    setLoadingSubjects(true)
+    setLoadError('')
+    api.subjects.list()
+      .then((r) => {
+        setSubjects(r.subjects.map(toSubjectConfig))
+      })
+      .catch(() => {
+        setLoadError('Unable to load subjects from the server right now.')
+        setSubjects([])
+      })
+      .finally(() => setLoadingSubjects(false))
   }, [])
 
   type FilterKey = 'All' | 'Not Taken' | 'In Progress' | 'Completed'
@@ -282,7 +293,18 @@ export default function SelectSubjectPage() {
           </div>
 
           {/* Grid */}
-          {filtered.length > 0 ? (
+          {loadingSubjects ? (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center justify-center py-24 text-center">
+              <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4" style={{ backgroundColor: '#e7e8e9', color: '#6d7b6c' }}>{Ic.book}</div>
+              <h4 className="text-xl font-bold mb-1" style={{ fontFamily: 'Manrope,sans-serif', color: '#191c1d' }}>Loading subjects...</h4>
+            </motion.div>
+          ) : loadError ? (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center justify-center py-24 text-center">
+              <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4" style={{ backgroundColor: '#ffdad6', color: '#9e4036' }}>{Ic.info}</div>
+              <h4 className="text-xl font-bold mb-1" style={{ fontFamily: 'Manrope,sans-serif', color: '#191c1d' }}>Could not load subjects</h4>
+              <p className="text-sm" style={{ color: '#6d7b6c' }}>{loadError}</p>
+            </motion.div>
+          ) : filtered.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
               {filtered.map((subject, i) => <SubjectCard key={subject.id} subject={subject} index={i} />)}
               {activeFilter === 'All' && query === '' && (

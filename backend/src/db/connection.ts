@@ -43,11 +43,48 @@ sqlite.exec(`
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 
+  CREATE TABLE IF NOT EXISTS subjects (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    code TEXT UNIQUE NOT NULL,
+    icon_key TEXT NOT NULL DEFAULT 'book',
+    icon_bg TEXT NOT NULL DEFAULT '#fff3e0',
+    active INTEGER NOT NULL DEFAULT 0,
+    time_limit INTEGER NOT NULL DEFAULT 60,
+    max_attempts INTEGER NOT NULL DEFAULT 2,
+    description TEXT NOT NULL DEFAULT '',
+    questions_count INTEGER NOT NULL DEFAULT 0,
+    credits INTEGER NOT NULL DEFAULT 1,
+    created_by TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS questions (
+    id TEXT PRIMARY KEY,
+    subject_id INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+    text TEXT NOT NULL,
+    options TEXT NOT NULL,
+    correct_answer INTEGER NOT NULL,
+    difficulty TEXT NOT NULL DEFAULT 'Standard' CHECK (difficulty IN ('Easy', 'Standard', 'Hard')),
+    created_by TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+
   CREATE INDEX IF NOT EXISTS idx_users_student_id ON users(student_id);
   CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
   CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id);
   CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);
+  CREATE INDEX IF NOT EXISTS idx_subjects_active ON subjects(active);
+  CREATE INDEX IF NOT EXISTS idx_questions_subject_id ON questions(subject_id);
 `);
 
-export const db = drizzle(sqlite);
+let _db = drizzle(sqlite);
+
+/** Override the db instance (for test isolation only). */
+export function __setDb(newDb: typeof _db) {
+  _db = newDb;
+}
+
+export { _db as db };
 export { sqlite };

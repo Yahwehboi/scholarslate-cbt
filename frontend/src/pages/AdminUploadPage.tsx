@@ -82,8 +82,8 @@ function AdminSidebar({ open, onClose }: { open: boolean; onClose: () => void })
   )
 }
 
-function FField({ label, value, onChange, type = 'text', as = 'input', placeholder = '' }:
-  { label: string; value: string; onChange: (v: string) => void; type?: string; as?: 'input' | 'textarea' | 'select'; placeholder?: string }) {
+function FField({ label, value, onChange, type = 'text', as = 'input', placeholder = '', options = [] }:
+  { label: string; value: string; onChange: (v: string) => void; type?: string; as?: 'input' | 'textarea' | 'select'; placeholder?: string; options?: string[] }) {
   const [focused, setFocused] = useState(false)
   const base: React.CSSProperties = {
     width: '100%', background: 'transparent', border: 'none', outline: 'none',
@@ -103,7 +103,7 @@ function FField({ label, value, onChange, type = 'text', as = 'input', placehold
         <select value={value} onChange={e => onChange(e.target.value)}
           onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} style={base}>
           <option value="">Select subject...</option>
-          {['Mathematics', 'Physics', 'English Language', 'Chemistry', 'Biology', 'History'].map(s => <option key={s}>{s}</option>)}
+          {options.map(s => <option key={s}>{s}</option>)}
         </select>
       ) : (
         <input type={type} value={value} placeholder={placeholder}
@@ -178,8 +178,62 @@ function DropZone({ label, hint, accept, onFile, file }: {
   )
 }
 
-type Question = { id: string; preview: string; answer: string; date: string }
+type Question = {
+  id: string
+  preview: string
+  answer: string
+  date: string
+  text: string
+  options: string[]
+  correctAnswer: number
+  difficulty: 'Easy' | 'Standard' | 'Hard'
+  subjectId: number
+}
 type UploadState = 'idle' | 'uploading' | 'done' | 'error'
+
+const answerLabel = (idx?: number) => {
+  if (idx === 0) return 'A'
+  if (idx === 1) return 'B'
+  if (idx === 2) return 'C'
+  if (idx === 3) return 'D'
+  return '-'
+}
+
+const toDisplayDate = (raw: string | undefined) => {
+  if (!raw) return '-'
+  if (raw === 'CURRENT_TIMESTAMP') return '-'
+  const parsed = new Date(raw)
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toLocaleString('en-GB', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  }
+  const isoLike = raw.includes(' ') ? raw.replace(' ', 'T') : raw
+  const parsedIsoLike = new Date(isoLike)
+  if (!Number.isNaN(parsedIsoLike.getTime())) {
+    return parsedIsoLike.toLocaleString('en-GB', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  }
+  return '-'
+}
+
+const answerFromIndex = (idx?: number) => {
+  if (idx === 0) return 'A'
+  if (idx === 1) return 'B'
+  if (idx === 2) return 'C'
+  if (idx === 3) return 'D'
+  return 'A'
+}
+
+const parseOptionArray = (value: unknown): string[] => {
+  if (Array.isArray(value)) return value.map(v => String(v))
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value)
+      if (Array.isArray(parsed)) return parsed.map(v => String(v))
+    } catch {
+      return []
+    }
+  }
+  return []
+}
 
 export default function AdminUploadPage() {
   const navigate = useNavigate()
@@ -188,79 +242,168 @@ export default function AdminUploadPage() {
   const [activeTab, setActiveTab] = useState<'manual' | 'batch-q' | 'batch-s'>('manual')
   const [toastMsg, setToastMsg] = useState('')
   const [registeredCount, setRegisteredCount] = useState(0)
+  const [subjectMap, setSubjectMap] = useState<Map<string, number>>(new Map())
+  const [subjectNames, setSubjectNames] = useState<string[]>([])
+  const [subjectNameById, setSubjectNameById] = useState<Map<number, string>>(new Map())
 
-  useEffect(() => {
-    api.students.list({ limit: 1 }).then(r => setRegisteredCount(r.total)).catch(() => {})
-  }, [])
+  const refreshSubjects = async () => {
+    const r = await api.subjects.list()
+    const names = r.subjects.map(s => s.name)
+    const nameToId = new Map(r.subjects.map(s => [s.name, s.id]))
+    const idToName = new Map(r.subjects.map(s => [s.id, s.name]))
+    setSubjectNames(names)
+    setSubjectMap(nameToId)
+    setSubjectNameById(idToName)
+    return { nameToId, idToName }
+  }
 
-  // Manual form
   const [form, setForm] = useState({ subject: '', difficulty: 'Standard', question: '', optA: '', optB: '', optC: '', optD: '', answer: 'A' })
-
-  const [questions, setQuestions] = useState<Question[]>([
-    { id: '#MAT-204', preview: 'Calculate the derivative of f(x) = sin(x²) using the chain rule...', answer: 'B', date: 'Apr 2, 09:20' },
-    { id: '#MAT-203', preview: 'Given matrix A, find the determinant using Gaussian elimination...', answer: 'A', date: 'Apr 2, 08:45' },
-    { id: '#MAT-202', preview: 'State the conditions for a series to be convergent under the ratio test...', answer: 'D', date: 'Apr 1, 16:10' },
-  ])
-
-  // Batch state
+  const [submitting, setSubmitting] = useState(false)
+  const [questions, setQuestions] = useState<Question[]>([])
   const [qFile,   setQFile]   = useState<File | null>(null)
   const [sFile,   setSFile]   = useState<File | null>(null)
   const [qState,  setQState]  = useState<UploadState>('idle')
   const [sState,  setSState]  = useState<UploadState>('idle')
+  const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null)
+  const [deleteDialogQuestionId, setDeleteDialogQuestionId] = useState<string | null>(null)
+
+  const loadRecentQuestions = async () => {
+    try {
+      const result = await api.questions.listAll({ limit: 100 })
+      const merged = result.questions
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .slice(0, 30)
+
+      const mapped: Question[] = merged.map(q => ({
+        id: q.id,
+        preview: q.text.slice(0, 70) + (q.text.length > 70 ? '...' : ''),
+        answer: answerLabel(q.correctAnswer),
+        date: toDisplayDate(q.createdAt),
+        text: q.text,
+        options: parseOptionArray(q.options),
+        correctAnswer: q.correctAnswer ?? 0,
+        difficulty: q.difficulty,
+        subjectId: q.subjectId,
+      }))
+
+      setQuestions(mapped)
+    } catch {
+      // Keep UI usable even if question fetch fails.
+    }
+  }
+
+  useEffect(() => {
+    api.students.list({ limit: 1 }).then(r => setRegisteredCount(r.total)).catch(() => {})
+    void (async () => {
+      try {
+        await refreshSubjects()
+        await loadRecentQuestions()
+      } catch {
+        // Keep page interactive even if initial data fetch fails.
+      }
+    })()
+  }, [])
 
   const showToast = (msg: string) => {
     setToastMsg(msg)
-    setTimeout(() => setToastMsg(''), 4000)
+    setTimeout(() => setToastMsg(''), 5000)
   }
 
-  const handleManualSubmit = (e: React.FormEvent) => {
+  const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.subject || !form.question || !form.optA || !form.optB || !form.optC || !form.optD) {
       showToast('⚠ Please fill in all fields before submitting.')
       return
     }
-    const newQ: Question = {
-      id: `#Q-${Date.now().toString().slice(-5)}`,
-      preview: form.question.slice(0, 70) + (form.question.length > 70 ? '...' : ''),
-      answer: form.answer,
-      date: new Date().toLocaleString('en-GB', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+    const subjectId = subjectMap.get(form.subject)
+    if (subjectId === undefined) { showToast('⚠ Subject not found. Create it in Subjects Control first.'); return }
+    setSubmitting(true)
+    try {
+      if (editingQuestionId) {
+        await api.questions.update(editingQuestionId, {
+          subjectId,
+          text: form.question,
+          options: [form.optA, form.optB, form.optC, form.optD],
+          correctAnswer: ['A', 'B', 'C', 'D'].indexOf(form.answer),
+          difficulty: form.difficulty as 'Easy' | 'Standard' | 'Hard',
+        })
+      } else {
+        await api.questions.create({
+          subjectId,
+          text: form.question,
+          options: [form.optA, form.optB, form.optC, form.optD],
+          correctAnswer: ['A', 'B', 'C', 'D'].indexOf(form.answer),
+          difficulty: form.difficulty as 'Easy' | 'Standard' | 'Hard',
+        })
+      }
+      setForm({ subject: '', difficulty: 'Standard', question: '', optA: '', optB: '', optC: '', optD: '', answer: 'A' })
+      setEditingQuestionId(null)
+      showToast(editingQuestionId ? '✅ Question updated successfully!' : '✅ Question saved to database successfully!')
+      await refreshSubjects()
+      await loadRecentQuestions()
+    } catch (err) {
+      showToast(`⚠ ${err instanceof Error ? err.message : 'Failed to save question.'}`)
+    } finally {
+      setSubmitting(false)
     }
-    setQuestions(prev => [newQ, ...prev])
-    setForm({ subject: '', difficulty: 'Standard', question: '', optA: '', optB: '', optC: '', optD: '', answer: 'A' })
-    showToast('✅ Question added to bank successfully!')
   }
 
-  const handleQuestionUpload = () => {
+  const handleQuestionUpload = async () => {
     if (!qFile) { showToast('⚠ Please select a CSV file first.'); return }
     setQState('uploading')
-    // Simulate upload — replace with real API call later
-    setTimeout(() => {
+    try {
+      const result = await api.questions.uploadCsv(qFile)
       setQState('done')
-      showToast(`✅ ${qFile.name} processed! Questions will be added once backend is connected.`)
+      const skippedNote = result.skipped > 0 ? ` (${result.skipped} skipped)` : ''
+      showToast(`✅ ${result.inserted} questions imported successfully!${skippedNote}`)
+      setQFile(null)
+      await refreshSubjects()
+      await loadRecentQuestions()
       setTimeout(() => setQState('idle'), 3000)
-    }, 2000)
+    } catch (err) {
+      setQState('error')
+      showToast(`⚠ ${err instanceof Error ? err.message : 'Upload failed.'}`)
+      setTimeout(() => setQState('idle'), 3000)
+    }
   }
 
   const handleStudentUpload = async () => {
     if (!sFile) { showToast('⚠ Please select a CSV file first.'); return }
     setSState('uploading')
-
-    try {
-      const csvText = await sFile.text()
-      void csvText // student CSV import endpoint coming in Phase 2
-      setSState('error')
-      showToast('⚠ Student CSV import requires the Phase 2 backend endpoint. Coming soon!')
-      setTimeout(() => setSState('idle'), 3000)
-    } catch (error) {
-      setSState('error')
-      showToast(`⚠ ${error instanceof Error ? error.message : 'Unable to process the student CSV.'}`)
-      setTimeout(() => setSState('idle'), 3000)
-    }
+    setSState('error')
+    showToast('⚠ Student CSV import is coming in Phase 3.')
+    setTimeout(() => setSState('idle'), 3000)
   }
 
   const handleLogout = () => {
-    logout()
-    navigate('/login', { replace: true })
+    logout().then(() => navigate('/login', { replace: true }))
+  }
+
+  const handleDeleteQuestion = async (id: string) => {
+    try {
+      await api.questions.delete(id)
+      setQuestions(prev => prev.filter(x => x.id !== id))
+      showToast('✅ Question deleted.')
+    } catch (err) {
+      showToast(`⚠ ${err instanceof Error ? err.message : 'Failed to delete question.'}`)
+    }
+  }
+
+  const handleEditQuestion = (q: Question) => {
+    const subjectName = subjectNameById.get(q.subjectId) ?? ''
+    setForm({
+      subject: subjectName,
+      difficulty: q.difficulty,
+      question: q.text,
+      optA: q.options[0] ?? '',
+      optB: q.options[1] ?? '',
+      optC: q.options[2] ?? '',
+      optD: q.options[3] ?? '',
+      answer: answerFromIndex(q.correctAnswer),
+    })
+    setEditingQuestionId(q.id)
+    setActiveTab('manual')
+    showToast('Editing question loaded into form.')
   }
 
   return (
@@ -278,6 +421,28 @@ export default function AdminUploadPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {deleteDialogQuestionId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(25,28,29,0.45)' }}>
+          <div className="w-[92vw] max-w-md rounded-2xl p-6" style={{ backgroundColor: '#ffffff', boxShadow: '0 16px 40px rgba(25,28,29,0.25)' }}>
+            <h3 className="text-lg font-extrabold mb-2" style={{ color: '#191c1d', fontFamily: 'Manrope,sans-serif' }}>Confirm Deletion</h3>
+            <p className="text-sm mb-5" style={{ color: '#3d4a3d' }}>Are you sure you want to delete this question? This action cannot be undone.</p>
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setDeleteDialogQuestionId(null)} className="px-4 py-2 rounded-full text-sm font-bold" style={{ backgroundColor: '#f3f4f5', color: '#6d7b6c' }}>Cancel</button>
+              <button
+                onClick={() => {
+                  const id = deleteDialogQuestionId
+                  setDeleteDialogQuestionId(null)
+                  if (id) void handleDeleteQuestion(id)
+                }}
+                className="px-4 py-2 rounded-full text-sm font-bold"
+                style={{ backgroundColor: '#9e4036', color: '#ffffff' }}>
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="main-content flex flex-col min-h-screen">
         <header className="sticky top-0 z-20 flex items-center justify-between px-6 md:px-8 h-16"
@@ -328,12 +493,12 @@ export default function AdminUploadPage() {
                   <form onSubmit={handleManualSubmit} className="space-y-7">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                       <div className="md:col-span-2">
-                        <FField label="Target Subject" value={form.subject} onChange={v => setForm(f => ({ ...f, subject: v }))} as="select" />
+                        <FField label="Target Subject" value={form.subject} onChange={v => setForm(f => ({ ...f, subject: v }))} as="select" options={subjectNames} />
                       </div>
                       <div>
                         <label className="block text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: '#6d7b6c' }}>Difficulty</label>
                         <div className="flex gap-2 mt-2">
-                          {['Standard', 'Advanced'].map(d => (
+                          {['Easy', 'Standard', 'Hard'].map(d => (
                             <button key={d} type="button" onClick={() => setForm(f => ({ ...f, difficulty: d }))}
                               className="px-3 py-1.5 rounded-full text-xs font-bold"
                               style={{ backgroundColor: form.difficulty === d ? '#006e2f' : '#f3f4f5', color: form.difficulty === d ? '#fff' : '#3d4a3d' }}>
@@ -353,6 +518,13 @@ export default function AdminUploadPage() {
                     </div>
 
                     <div className="flex flex-wrap items-end justify-between gap-6 pt-5" style={{ borderTop: '1px solid #edeeef' }}>
+                      {editingQuestionId && (
+                        <button type="button" onClick={() => { setEditingQuestionId(null); setForm({ subject: '', difficulty: 'Standard', question: '', optA: '', optB: '', optC: '', optD: '', answer: 'A' }) }}
+                          className="px-4 py-2 rounded-full text-xs font-bold"
+                          style={{ color: '#6d7b6c', backgroundColor: '#f3f4f5' }}>
+                          Cancel Edit
+                        </button>
+                      )}
                       <div>
                         <label className="block text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: '#6d7b6c' }}>Correct Answer Key</label>
                         <div className="flex gap-2">
@@ -365,10 +537,10 @@ export default function AdminUploadPage() {
                           ))}
                         </div>
                       </div>
-                      <motion.button type="submit" whileHover={{ y: -2 }} whileTap={{ scale: 0.97 }}
+                      <motion.button type="submit" whileHover={{ y: -2 }} whileTap={{ scale: 0.97 }} disabled={submitting}
                         className="flex items-center gap-2 px-8 py-3.5 rounded-xl font-bold text-sm text-white"
-                        style={{ background: 'linear-gradient(135deg,#006e2f,#22c55e)', boxShadow: '0 4px 14px rgba(34,197,94,0.3)' }}>
-                        {Ic.send} Upload to Question Bank
+                        style={{ background: 'linear-gradient(135deg,#006e2f,#22c55e)', boxShadow: '0 4px 14px rgba(34,197,94,0.3)', opacity: submitting ? 0.8 : 1 }}>
+                        {submitting ? 'Saving...' : <>{Ic.send} {editingQuestionId ? 'Save Changes' : 'Upload to Question Bank'}</>}
                       </motion.button>
                     </div>
                   </form>
@@ -391,7 +563,7 @@ export default function AdminUploadPage() {
                       style={{ gridTemplateColumns: '1fr 3fr 1fr 1fr 80px', borderTop: i === 0 ? 'none' : '1px solid #f3f4f5' }}
                       onMouseEnter={e => ((e.currentTarget as HTMLElement).style.backgroundColor = '#f8f9fa')}
                       onMouseLeave={e => ((e.currentTarget as HTMLElement).style.backgroundColor = 'transparent')}>
-                      <span className="text-sm font-mono" style={{ color: '#6d7b6c' }}>{q.id}</span>
+                      <span className="text-sm font-mono" style={{ color: '#6d7b6c' }}>{q.id.slice(0, 8).toUpperCase()}</span>
                       <p className="text-sm truncate pr-4" style={{ color: '#191c1d', fontWeight: 500 }}>{q.preview}</p>
                       <div className="flex justify-center">
                         <span className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-black"
@@ -399,12 +571,12 @@ export default function AdminUploadPage() {
                       </div>
                       <span className="text-xs" style={{ color: '#6d7b6c' }}>{q.date}</span>
                       <div className="flex justify-end gap-1">
-                        <button className="p-2 rounded-full" style={{ color: '#bccbb9' }}
+                        <button onClick={() => handleEditQuestion(q)} className="p-2 rounded-full" style={{ color: '#bccbb9' }}
                           onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#006e2f'; (e.currentTarget as HTMLElement).style.backgroundColor = '#e8f5ed' }}
                           onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#bccbb9'; (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}>
                           {Ic.edit}
                         </button>
-                        <button onClick={() => setQuestions(p => p.filter(x => x.id !== q.id))}
+                        <button onClick={() => setDeleteDialogQuestionId(q.id)}
                           className="p-2 rounded-full" style={{ color: '#bccbb9' }}
                           onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#9e4036'; (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(158,64,54,0.08)' }}
                           onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#bccbb9'; (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent' }}>
@@ -425,8 +597,8 @@ export default function AdminUploadPage() {
                   <p className="text-sm mb-8" style={{ color: '#6d7b6c' }}>Upload a CSV file with multiple questions at once.</p>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-                    <DropZone label="Drop your CSV file here" hint="or click to browse • .csv, .xlsx accepted"
-                      accept=".csv,.xlsx" onFile={setQFile} file={qFile} />
+                    <DropZone label="Drop your CSV file here" hint="or click to browse • .csv accepted"
+                      accept=".csv" onFile={setQFile} file={qFile} />
                     <div className="flex flex-col gap-4">
                       <div className="p-5 rounded-xl" style={{ backgroundColor: '#f3f4f5' }}>
                         <h4 className="font-bold text-sm mb-3" style={{ color: '#191c1d' }}>Required CSV Columns</h4>

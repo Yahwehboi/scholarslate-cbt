@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { api, type ApiQuestion } from '../lib/apiClient'
 import { formatClassLabel, getUserInitials } from '../lib/auth'
 
 const Ic = {
@@ -22,32 +23,11 @@ const Ic = {
 }
 
 // ── Sample questions pool (20 — will come from API per subject) ────
-const ALL_QUESTIONS = [
-  {id:1,  text:'If 2x + 3 = 11, what is the value of x?',                          options:['x = 3','x = 4','x = 5','x = 6']},
-  {id:2,  text:'Area of a circle with radius 7 cm? (π ≈ 3.14)',                    options:['153.86 cm²','43.96 cm²','49 cm²','144 cm²']},
-  {id:3,  text:'Simplify: 3(2x − 4) + 2(x + 5)',                                   options:['8x − 2','8x + 2','6x − 2','6x + 2']},
-  {id:4,  text:'Gradient of line through (2,3) and (4,7)?',                        options:['1','2','3','4']},
-  {id:5,  text:'3 red, 5 blue balls. Probability of picking red?',                 options:['3/5','5/8','3/8','1/2']},
-  {id:6,  text:'Evaluate: log₁₀(1000)',                                             options:['2','3','4','10']},
-  {id:7,  text:'Sum of angles in a triangle?',                                      options:['90°','180°','270°','360°']},
-  {id:8,  text:'Factorise completely: x² − 9',                                      options:['(x−3)²','(x+3)²','(x+3)(x−3)','(x−9)(x+1)']},
-  {id:9,  text:"Derivative of f(x) = 4x³−2x²+7x−5. Slope at x=2?",               options:["f'=12x²−4x+7; Slope=47","f'=12x²−4x+7; Slope=43","f'=8x²−4x+7; Slope=47","f'=12x²−2x+7; Slope=51"]},
-  {id:10, text:'Solve: x² − 5x + 6 = 0',                                           options:['x=1,x=6','x=2,x=3','x=−2,x=−3','x=3,x=4']},
-  {id:11, text:'HCF of 36 and 48?',                                                options:['6','8','12','18']},
-  {id:12, text:'Convert 0.375 to simplest fraction.',                              options:['3/8','1/4','3/4','5/8']},
-  {id:13, text:'If sin θ = 0.5, find θ (0°≤θ≤90°).',                              options:['30°','45°','60°','90°']},
-  {id:14, text:'Car travels 120 km in 2 hours. Speed?',                            options:['40 km/h','50 km/h','60 km/h','80 km/h']},
-  {id:15, text:'Evaluate: 5!',                                                      options:['20','60','100','120']},
-  {id:16, text:'Next term: 2, 6, 18, 54, ...?',                                    options:['108','162','216','270']},
-  {id:17, text:'Rectangle 12×5 cm. Diagonal?',                                     options:['13 cm','14 cm','15 cm','17 cm']},
-  {id:18, text:'Simplify: (2³ × 2⁴) ÷ 2⁵',                                        options:['2','4','8','16']},
-  {id:19, text:'If y = 3x² + 2x − 1, find dy/dx.',                                options:['6x+2','3x+2','6x−2','3x²+2']},
-  {id:20, text:'Volume of cylinder r=3cm, h=10cm. (π≈3.14)',                       options:['94.2 cm³','188.4 cm³','282.6 cm³','942 cm³']},
-]
-
-const CORRECT_ANSWERS: Record<number,number> = {
-  1:1,2:0,3:0,4:1,5:2,6:1,7:1,8:2,9:0,10:1,
-  11:2,12:0,13:0,14:2,15:3,16:1,17:0,18:1,19:0,20:2,
+type RuntimeQuestion = {
+  id: string
+  text: string
+  options: string[]
+  correctAnswer?: number
 }
 
 // ── Scientific Calculator ─────────────────────────────────────────
@@ -225,15 +205,52 @@ export default function ExamPage(){
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const subjectData    = (location.state as any)?.subject
   const subjectName    = subjectData?.name      ?? 'Mathematics'
+  const subjectId      = Number(subjectData?.id)
   const examDuration   = subjectData?.time      ? subjectData.time * 60 : 60 * 60
-  const totalQCount    = Math.min(subjectData?.questions ?? 20, ALL_QUESTIONS.length)
-  // Slice questions to the count configured for this subject (max 20 for now)
-  const QUESTIONS      = ALL_QUESTIONS.slice(0, totalQCount)
+  const [questions, setQuestions] = useState<RuntimeQuestion[]>([])
+  const [loadingQuestions, setLoadingQuestions] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [submitError, setSubmitError] = useState('')
+
+  useEffect(() => {
+    setLoadError('')
+
+    if (!Number.isFinite(subjectId) || subjectId <= 0) {
+      setQuestions([])
+      setLoadError('Invalid subject context. Please reselect a subject.')
+      setLoadingQuestions(false)
+      return
+    }
+
+    setLoadingQuestions(true)
+    api.questions.listBySubject(subjectId)
+      .then((res) => {
+        if (!res.questions.length) {
+          setQuestions([])
+          return
+        }
+
+        const mapped = res.questions.map((q: ApiQuestion) => ({
+          id: q.id,
+          text: q.text,
+          options: q.options,
+          correctAnswer: q.correctAnswer,
+        }))
+        setQuestions(mapped)
+      })
+      .catch(() => {
+        setQuestions([])
+        setLoadError('Unable to load questions from server. Please try again.')
+      })
+      .finally(() => setLoadingQuestions(false))
+  }, [subjectId])
+
+  const QUESTIONS      = questions
   const TOTAL          = QUESTIONS.length
 
   const [current,setCurrent]=useState(0)
-  const [answers,setAnswers]=useState<Record<number,number>>({})
-  const [flagged,setFlagged]=useState<Set<number>>(new Set())
+  const [answers,setAnswers]=useState<Record<string,number>>({})
+  const [flagged,setFlagged]=useState<Set<string>>(new Set())
   const [timeLeft,setTimeLeft]=useState(examDuration)
   const [showSubmit,setShowSubmit]=useState(false)
   const [showResources,setShowResources]=useState(false)
@@ -248,13 +265,26 @@ export default function ExamPage(){
   const isWarning=timeLeft<300
 
   const submitExam=useCallback(()=>{
+    if (TOTAL === 0) {
+      navigate('/result',{state:{correct:0,incorrect:0,unanswered:0,score:0,total:0,timeUsed:'0m 00s',subject:subjectName}})
+      return
+    }
+
+    const hasFullAnswerKey = QUESTIONS.every((question) => question.correctAnswer !== undefined)
+    if (!hasFullAnswerKey) {
+      setShowSubmit(false)
+      setSubmitError('Exam submission is not connected yet. Phase 3 submit endpoint is required for real grading.')
+      return
+    }
+
     const secondsUsed=examDuration-timeLeft
     const mins=Math.floor(secondsUsed/60),secs=secondsUsed%60
     const timeUsed=`${mins}m ${String(secs).padStart(2,'0')}s`
     let correct=0,incorrect=0,unanswered=0
+
     QUESTIONS.forEach(q=>{
       if(answers[q.id]===undefined)unanswered++
-      else if(answers[q.id]===CORRECT_ANSWERS[q.id])correct++
+      else if(answers[q.id]===q.correctAnswer)correct++
       else incorrect++
     })
     const score=Math.round((correct/TOTAL)*100)
@@ -262,10 +292,11 @@ export default function ExamPage(){
   },[answers,timeLeft,navigate,examDuration,QUESTIONS,TOTAL,subjectName])
 
   useEffect(()=>{
+    if (loadingQuestions || TOTAL === 0) return
     if(timeLeft<=0){submitExam();return}
     const t=setInterval(()=>setTimeLeft(s=>s-1),1000)
     return()=>clearInterval(t)
-  },[timeLeft,submitExam])
+  },[timeLeft,submitExam,loadingQuestions,TOTAL])
 
   const fmt=useCallback((secs:number)=>{
     const h=Math.floor(secs/3600),m=Math.floor((secs%3600)/60),s=secs%60
@@ -276,7 +307,7 @@ export default function ExamPage(){
   const clearAnswer=()=>setAnswers(prev=>{const n={...prev};delete n[q.id];return n})
   const toggleFlag=()=>setFlagged(prev=>{const n=new Set(prev);n.has(q.id)?n.delete(q.id):n.add(q.id);return n})
 
-  const nodeStyle=(qid:number)=>{
+  const nodeStyle=(qid:string)=>{
     if(qid===q.id)              return {bg:'#ffffff',color:'#006e2f',border:'2px solid #006e2f'}
     if(flagged.has(qid))        return {bg:'#ff8b7c',color:'#76231b',border:'none'}
     if(answers[qid]!==undefined)return {bg:'#006e2f',color:'#ffffff',border:'none'}
@@ -284,6 +315,31 @@ export default function ExamPage(){
   }
 
   const letters=['A','B','C','D']
+
+  if (loadingQuestions) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#f8f9fa' }}>
+        <div className="text-center">
+          <h2 className="text-xl font-extrabold" style={{ fontFamily: 'Manrope,sans-serif', color: '#191c1d' }}>Loading exam questions...</h2>
+          <p className="text-sm mt-2" style={{ color: '#6d7b6c' }}>Preparing {subjectName} question set.</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (TOTAL === 0 || !q) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#f8f9fa' }}>
+        <div className="text-center max-w-md px-6">
+          <h2 className="text-xl font-extrabold" style={{ fontFamily: 'Manrope,sans-serif', color: '#191c1d' }}>No questions available</h2>
+          <p className="text-sm mt-2" style={{ color: '#6d7b6c' }}>{loadError || 'This subject has no published questions yet. Contact your administrator.'}</p>
+          <button onClick={() => navigate('/select-subject')} className="mt-5 px-5 py-2.5 rounded-full text-sm font-bold" style={{ backgroundColor: '#006e2f', color: '#fff' }}>
+            Back to subjects
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   return(
     <>
@@ -294,6 +350,12 @@ export default function ExamPage(){
       <ResourcesPanel open={showResources} onClose={()=>setShowResources(false)}/>
 
       <div className="min-h-screen" style={{backgroundColor:'#f8f9fa',fontFamily:'Inter,sans-serif'}}>
+        {submitError && (
+          <div className="fixed top-20 right-6 z-50 px-5 py-3 rounded-xl text-sm font-bold"
+            style={{ backgroundColor: '#ffdad6', color: '#9e4036', boxShadow: '0 8px 24px rgba(25,28,29,0.12)', maxWidth: '420px' }}>
+            {submitError}
+          </div>
+        )}
 
         {/* Navbar — single timer */}
         <nav className="sticky top-0 z-30 flex items-center justify-between px-5 md:px-8 h-16"

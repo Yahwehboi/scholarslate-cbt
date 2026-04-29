@@ -24,3 +24,31 @@ export const auditLogs = sqliteTable("audit_logs", {
   userAgent: text("user_agent"),
   createdAt: text("created_at").notNull().default("CURRENT_TIMESTAMP"),
 });
+
+export const subjects = sqliteTable("subjects", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  code: text("code").unique().notNull(),
+  iconKey: text("icon_key").notNull().default("book"),
+  iconBg: text("icon_bg").notNull().default("#fff3e0"),
+  active: integer("active", { mode: "boolean" }).notNull().default(false),
+  timeLimit: integer("time_limit").notNull().default(60),
+  maxAttempts: integer("max_attempts").notNull().default(2),
+  description: text("description").notNull().default(""),
+  questionsCount: integer("questions_count").notNull().default(0),
+  credits: integer("credits").notNull().default(1),
+  createdBy: text("created_by"),
+  createdAt: text("created_at").notNull().default("CURRENT_TIMESTAMP"),
+  updatedAt: text("updated_at").notNull().default("CURRENT_TIMESTAMP"),
+});
+
+export const questions = sqliteTable("questions", {
+  id: text("id").primaryKey(),
+  subjectId: integer("subject_id").notNull(),
+  text: text("text").notNull(),
+  options: text("options").notNull(), // JSON array of 4 strings
+  correctAnswer: integer("correct_answer").notNull(), // 0-3 index
+  difficulty: text("difficulty", { enum: ["Easy", "Standard", "Hard"] }).notNull().default("Standard"),
+  createdBy: text("created_by"),
+  createdAt: text("created_at").notNull().default("CURRENT_TIMESTAMP"),
+});

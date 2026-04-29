@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+import { Fragment, useState, useEffect, type ReactNode } from 'react'
 import { motion } from 'framer-motion'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { api, type ApiSubject } from '../lib/apiClient'
 
 const Ic = {
   admin:    <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg>,
@@ -32,31 +33,18 @@ export type SubjectConfig = {
   attemptsUsed: number; duration: string;
 }
 
-const ICON_MAP: Record<string, React.ReactNode> = {
+const ICON_MAP: Record<string, ReactNode> = {
   math: Ic.math, science: Ic.science, english: Ic.english,
   history: Ic.history, book: Ic.book,
 }
 
-const DEFAULT_SUBJECTS: SubjectConfig[] = [
-  { id:1, name:'Mathematics',      code:'MATH-S1',  iconKey:'math',    iconBg:'#e8f5e9', active:true,  time:60, maxAttempts:2, description:'Algebra, calculus, statistics and number theory.', questions:50, credits:2, status:'not-taken', attemptsUsed:0, duration:'60 mins' },
-  { id:2, name:'Physics',          code:'PHYS-S1',  iconKey:'science', iconBg:'#e3f2fd', active:true,  time:45, maxAttempts:2, description:'Mechanics, electromagnetism and modern physics.', questions:50, credits:3, status:'not-taken', attemptsUsed:0, duration:'45 mins' },
-  { id:3, name:'English Language', code:'ENGL-S1',  iconKey:'english', iconBg:'#fce4ec', active:true,  time:60, maxAttempts:3, description:'Comprehension, grammar and essay composition.', questions:60, credits:3, status:'in-progress', attemptsUsed:1, duration:'60 mins' },
-  { id:4, name:'Chemistry',        code:'CHEM-S1',  iconKey:'science', iconBg:'#fff3e0', active:false, time:45, maxAttempts:2, description:'Organic reactions, periodic trends and chemical bonding.', questions:50, credits:3, status:'not-taken', attemptsUsed:0, duration:'45 mins' },
-  { id:5, name:'History',          code:'HIST-S1',  iconKey:'history', iconBg:'#f3e5f5', active:false, time:45, maxAttempts:2, description:'Pre-colonial Africa, independence movements and governance.', questions:40, credits:2, status:'not-taken', attemptsUsed:0, duration:'45 mins' },
-  { id:6, name:'Biology',          code:'BIO-S1',   iconKey:'science', iconBg:'#e8f5e9', active:true,  time:60, maxAttempts:2, description:'Cell biology, genetics and ecological systems.', questions:50, credits:4, status:'completed', attemptsUsed:2, duration:'60 mins' },
-]
-
-// Save/load subjects from localStorage so all pages share the same list
-export const loadSubjects = (): SubjectConfig[] => {
-  try {
-    const saved = localStorage.getItem('cbt_subjects')
-    return saved ? JSON.parse(saved) : DEFAULT_SUBJECTS
-  } catch { return DEFAULT_SUBJECTS }
-}
-
-export const saveSubjectsToStorage = (subjects: SubjectConfig[]) => {
-  localStorage.setItem('cbt_subjects', JSON.stringify(subjects))
-}
+const apiToConfig = (s: ApiSubject): SubjectConfig => ({
+  id: s.id, name: s.name, code: s.code,
+  iconKey: s.iconKey, iconBg: s.iconBg,
+  active: s.active, time: s.timeLimit, maxAttempts: s.maxAttempts,
+  description: s.description, questions: s.questionsCount, credits: s.credits,
+  status: 'not-taken', attemptsUsed: 0, duration: `${s.timeLimit} mins`,
+})
 
 function AdminSidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const navigate = useNavigate(), location = useLocation()
@@ -139,47 +127,81 @@ export default function AdminControlPage() {
   const navigate = useNavigate()
   const { logout } = useAuth()
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [hasChanges, setHasChanges] = useState(false)
-  const [saved, setSaved] = useState(false)
-  const [subjects, setSubjects] = useState<SubjectConfig[]>(() => loadSubjects())
+  const [subjects, setSubjects] = useState<SubjectConfig[]>([])
+  const [originalSubjects, setOriginalSubjects] = useState<SubjectConfig[]>([])
   const [editingId, setEditingId] = useState<number | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [toast, setToast] = useState('')
+  const [deleteDialogSubjectId, setDeleteDialogSubjectId] = useState<number | null>(null)
 
-  // Sync to localStorage whenever subjects change
-  useEffect(() => {
-    if (hasChanges) saveSubjectsToStorage(subjects)
-  }, [subjects, hasChanges])
+  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 4000) }
+
+  const reload = () => {
+    setLoading(true)
+    api.subjects.list()
+      .then(r => {
+        const mapped = r.subjects.map(apiToConfig)
+        setSubjects(mapped)
+        setOriginalSubjects(mapped)
+      })
+      .catch(() => showToast('Could not load subjects. Is the backend running?'))
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => { reload() }, [])
+
+  const hasChanges = JSON.stringify(subjects) !== JSON.stringify(originalSubjects)
 
   const update = (id: number, field: keyof SubjectConfig, val: unknown) => {
     setSubjects(prev => prev.map(s => s.id === id ? { ...s, [field]: val } : s))
-    setHasChanges(true)
   }
 
   const deleteSubject = (id: number) => {
-    setSubjects(prev => prev.filter(s => s.id !== id))
-    setHasChanges(true)
+    api.subjects.delete(id)
+      .then(() => {
+        setSubjects(prev => prev.filter(s => s.id !== id))
+        setOriginalSubjects(prev => prev.filter(s => s.id !== id))
+      })
+      .catch(() => showToast('Failed to delete subject.'))
   }
 
   const addSubject = () => {
-    const id = Date.now()
-    const newS: SubjectConfig = {
-      id, name: 'New Subject', code: `SUB-${id}`, iconKey: 'book', iconBg: '#fff3e0',
-      active: false, time: 60, maxAttempts: 2,
-      description: 'Subject description goes here.', questions: 50, credits: 2,
-      status: 'not-taken', attemptsUsed: 0, duration: '60 mins',
-    }
-    setSubjects(prev => [...prev, newS])
-    setHasChanges(true)
-    setEditingId(id) // auto-open edit for new subject
+    const tempCode = `SUB-${Date.now().toString().slice(-6)}`
+    api.subjects.create({ name: 'New Subject', code: tempCode, iconKey: 'book', iconBg: '#fff3e0', active: false, timeLimit: 60, maxAttempts: 2, description: '', credits: 1 })
+      .then(r => {
+        const newConfig = apiToConfig(r.subject)
+        setSubjects(prev => [...prev, newConfig])
+        setOriginalSubjects(prev => [...prev, newConfig])
+        setEditingId(newConfig.id)
+      })
+      .catch(() => showToast('Failed to create subject.'))
   }
 
-  const saveChanges = () => {
-    // Update duration strings to match time
-    const updated = subjects.map(s => ({ ...s, duration: `${s.time} mins`, questions: s.questions || 50 }))
-    setSubjects(updated)
-    saveSubjectsToStorage(updated)
-    setSaved(true)
-    setHasChanges(false)
-    setTimeout(() => setSaved(false), 3000)
+  const saveChanges = async () => {
+    setSaving(true)
+    try {
+      const originalMap = new Map(originalSubjects.map(s => [s.id, s]))
+      const toUpdate = subjects.filter(s => {
+        const orig = originalMap.get(s.id)
+        return orig && JSON.stringify(s) !== JSON.stringify(orig)
+      })
+      await Promise.all(toUpdate.map(s =>
+        api.subjects.update(s.id, {
+          name: s.name, code: s.code, iconKey: s.iconKey, iconBg: s.iconBg,
+          active: s.active, timeLimit: s.time, maxAttempts: s.maxAttempts,
+          description: s.description, credits: s.credits,
+        })
+      ))
+      setOriginalSubjects([...subjects])
+      setSaved(true)
+      setTimeout(() => setSaved(false), 3000)
+    } catch {
+      showToast('Failed to save changes. Please try again.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const activeCount = subjects.filter(s => s.active).length
@@ -192,6 +214,35 @@ export default function AdminControlPage() {
     <div className="min-h-screen" style={{ backgroundColor: '#f8f9fa' }}>
       <style>{`@media(min-width:768px){.sidebar-desktop{transform:translateX(0)!important;}.main-content{margin-left:256px;}}`}</style>
       <AdminSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+        {/* Toast */}
+        {toast && (
+          <div className="fixed top-20 right-6 z-50 px-5 py-3 rounded-xl text-sm font-bold"
+            style={{ backgroundColor: toast.startsWith('Could') || toast.startsWith('Failed') ? '#ffdad6' : '#e8f5ed', color: toast.startsWith('Could') || toast.startsWith('Failed') ? '#9e4036' : '#006e2f', boxShadow: '0 8px 24px rgba(25,28,29,0.12)', maxWidth: '360px' }}>
+            {toast}
+          </div>
+        )}
+
+      {deleteDialogSubjectId !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(25,28,29,0.45)' }}>
+          <div className="w-[92vw] max-w-md rounded-2xl p-6" style={{ backgroundColor: '#ffffff', boxShadow: '0 16px 40px rgba(25,28,29,0.25)' }}>
+            <h3 className="text-lg font-extrabold mb-2" style={{ color: '#191c1d', fontFamily: 'Manrope,sans-serif' }}>Confirm Deletion</h3>
+            <p className="text-sm mb-5" style={{ color: '#3d4a3d' }}>Are you sure you want to delete this subject? All linked questions will also be removed.</p>
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setDeleteDialogSubjectId(null)} className="px-4 py-2 rounded-full text-sm font-bold" style={{ backgroundColor: '#f3f4f5', color: '#6d7b6c' }}>Cancel</button>
+              <button
+                onClick={() => {
+                  const id = deleteDialogSubjectId
+                  setDeleteDialogSubjectId(null)
+                  if (id !== null) deleteSubject(id)
+                }}
+                className="px-4 py-2 rounded-full text-sm font-bold"
+                style={{ backgroundColor: '#9e4036', color: '#ffffff' }}>
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="main-content flex flex-col min-h-screen">
         <header className="sticky top-0 z-20 flex items-center justify-between px-6 md:px-8 h-16"
@@ -243,6 +294,9 @@ export default function AdminControlPage() {
                 {Ic.add} Add Subject
               </motion.button>
             </div>
+              {loading && (
+                <p className="text-sm text-center py-8" style={{ color: '#6d7b6c' }}>Loading subjects…</p>
+              )}
 
             <div className="overflow-x-auto">
               <table className="w-full text-left" style={{ borderCollapse: 'collapse' }}>
@@ -258,7 +312,7 @@ export default function AdminControlPage() {
                 </thead>
                 <tbody>
                   {subjects.map((s, i) => (
-                    <>
+                    <Fragment key={s.id}>
                       <tr key={s.id} style={{ borderTop: i === 0 ? 'none' : '1px solid #f3f4f5' }}
                         onMouseEnter={e => ((e.currentTarget as HTMLElement).style.backgroundColor = '#f8f9fa')}
                         onMouseLeave={e => ((e.currentTarget as HTMLElement).style.backgroundColor = 'transparent')}>
@@ -300,15 +354,18 @@ export default function AdminControlPage() {
                           <Toggle checked={s.active} onChange={v => update(s.id, 'active', v)} />
                         </td>
 
-                        {(['time', 'maxAttempts', 'questions'] as const).map(field => (
+                        {(['time', 'maxAttempts'] as const).map(field => (
                           <td key={field} className="py-5 px-5 text-center">
-                            <input type="number" value={s[field] as number} min={field === 'time' ? 15 : 1} max={field === 'time' ? 180 : field === 'questions' ? 200 : 5}
+                            <input type="number" value={s[field] as number} min={field === 'time' ? 15 : 1} max={field === 'time' ? 180 : 5}
                               onChange={e => update(s.id, field, parseInt(e.target.value) || 1)}
                               style={{ width: '70px', textAlign: 'center', background: 'transparent', border: 'none', borderBottom: '2px solid #e7e8e9', outline: 'none', fontFamily: 'Manrope,sans-serif', fontWeight: 700, fontSize: '0.95rem', color: '#191c1d', padding: '4px 0' }}
                               onFocus={e => (e.target.style.borderBottomColor = '#006e2f')}
                               onBlur={e => (e.target.style.borderBottomColor = '#e7e8e9')} />
                           </td>
                         ))}
+                        <td className="py-5 px-5 text-center">
+                          <span className="text-base font-bold" style={{ fontFamily: 'Manrope,sans-serif', color: '#191c1d' }}>{s.questions}</span>
+                        </td>
 
                         <td className="py-5 px-5 text-center">
                           <div className="flex items-center justify-center gap-1">
@@ -318,7 +375,7 @@ export default function AdminControlPage() {
                               style={{ color: '#006e2f', backgroundColor: '#e8f5ed' }}>
                               {Ic.edit}
                             </motion.button>
-                            <motion.button whileTap={{ scale: 0.9 }} onClick={() => deleteSubject(s.id)}
+                            <motion.button whileTap={{ scale: 0.9 }} onClick={() => setDeleteDialogSubjectId(s.id)}
                               className="p-2 rounded-full transition-colors"
                               style={{ color: '#bccbb9' }}
                               onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#9e4036'; (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(158,64,54,0.08)' }}
@@ -380,7 +437,7 @@ export default function AdminControlPage() {
                           </td>
                         </tr>
                       )}
-                    </>
+                    </Fragment>
                   ))}
                 </tbody>
               </table>
@@ -398,11 +455,11 @@ export default function AdminControlPage() {
               <p className="text-sm font-medium" style={{ color: '#3d4a3d' }}>You have unsaved changes in subject configurations.</p>
             </div>
             <div className="flex gap-3 flex-shrink-0">
-              <button onClick={() => { setSubjects(loadSubjects()); setHasChanges(false) }} className="px-5 py-2.5 rounded-full font-bold text-sm" style={{ color: '#6d7b6c', backgroundColor: '#f3f4f5' }}>Discard</button>
-              <motion.button whileTap={{ scale: 0.96 }} onClick={saveChanges}
+              <button onClick={() => reload()} className="px-5 py-2.5 rounded-full font-bold text-sm" style={{ color: '#6d7b6c', backgroundColor: '#f3f4f5' }}>Discard</button>
+              <motion.button whileTap={{ scale: 0.96 }} onClick={saveChanges} disabled={saving}
                 className="flex items-center gap-2 px-6 py-2.5 rounded-full font-bold text-sm text-white"
-                style={{ background: 'linear-gradient(135deg,#006e2f,#22c55e)', boxShadow: '0 4px 14px rgba(34,197,94,0.3)' }}>
-                {Ic.save} Save Settings
+                style={{ background: 'linear-gradient(135deg,#006e2f,#22c55e)', boxShadow: '0 4px 14px rgba(34,197,94,0.3)', opacity: saving ? 0.7 : 1 }}>
+                {saving ? 'Saving…' : <>{Ic.save} Save Settings</>}
               </motion.button>
             </div>
           </motion.div>
