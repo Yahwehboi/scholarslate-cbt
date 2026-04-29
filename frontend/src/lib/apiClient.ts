@@ -11,6 +11,10 @@ async function request<T>(
     "Content-Type": "application/json",
     ...(options?.headers as Record<string, string>),
   };
+  // Don't force Content-Type for FormData — browser sets it with boundary
+  if (options?.body instanceof FormData) {
+    delete headers["Content-Type"];
+  }
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
   const res = await fetch(`${BASE}${path}`, { ...options, headers });
@@ -78,4 +82,89 @@ export const api = {
       }>(`/students?${qs.toString()}`);
     },
   },
+
+    subjects: {
+      list: () =>
+        request<{ subjects: ApiSubject[] }>("/subjects"),
+
+      create: (body: {
+        name: string; code: string; iconKey?: string; iconBg?: string;
+        active?: boolean; timeLimit?: number; maxAttempts?: number;
+        description?: string; credits?: number;
+      }) =>
+        request<{ subject: ApiSubject }>("/subjects", {
+          method: "POST",
+          body: JSON.stringify(body),
+        }),
+
+      update: (id: number, body: Partial<{
+        name: string; code: string; iconKey: string; iconBg: string;
+        active: boolean; timeLimit: number; maxAttempts: number;
+        description: string; credits: number;
+      }>) =>
+        request<{ subject: ApiSubject }>(`/subjects/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify(body),
+        }),
+
+      delete: (id: number) =>
+        request<{ message: string }>(`/subjects/${id}`, { method: "DELETE" }),
+    },
+
+    questions: {
+      listAll: (params?: { limit?: number }) => {
+        const qs = new URLSearchParams();
+        if (params?.limit !== undefined) qs.set("limit", String(params.limit));
+        const suffix = qs.toString();
+        return request<{ questions: ApiQuestion[]; total: number }>(`/questions${suffix ? `?${suffix}` : ""}`);
+      },
+
+      listBySubject: (subjectId: number) =>
+        request<{ questions: ApiQuestion[]; total: number }>(`/questions?subjectId=${subjectId}`),
+
+      create: (body: {
+        subjectId: number; text: string; options: string[];
+        correctAnswer: number; difficulty?: "Easy" | "Standard" | "Hard";
+      }) =>
+        request<{ question: ApiQuestion }>("/questions", {
+          method: "POST",
+          body: JSON.stringify(body),
+        }),
+
+      uploadCsv: (file: File) => {
+        const form = new FormData();
+        form.append("file", file);
+        return request<{ inserted: number; skipped: number; errors?: string[] }>("/questions/bulk", {
+          method: "POST",
+          body: form,
+        });
+      },
+
+      update: (id: string, body: Partial<{
+        subjectId: number; text: string; options: string[];
+        correctAnswer: number; difficulty: "Easy" | "Standard" | "Hard";
+      }>) =>
+        request<{ question: ApiQuestion }>(`/questions/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify(body),
+        }),
+
+      delete: (id: string) =>
+        request<{ message: string }>(`/questions/${id}`, { method: "DELETE" }),
+    },
 };
+
+  // ─── Shared API types ─────────────────────────────────────────────────────────
+  export type ApiSubject = {
+    id: number; name: string; code: string;
+    iconKey: string; iconBg: string;
+    active: boolean; timeLimit: number; maxAttempts: number;
+    description: string; questionsCount: number; credits: number;
+    createdAt: string; updatedAt: string;
+  };
+
+  export type ApiQuestion = {
+    id: string; subjectId: number; text: string;
+    options: string[]; correctAnswer?: number;
+    difficulty: "Easy" | "Standard" | "Hard"; createdAt: string;
+  };

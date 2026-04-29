@@ -9,6 +9,8 @@ import { errorHandler, notFoundHandler } from "./middleware/error-handler.js";
 import { authRouter } from "./routes/auth.js";
 import { healthRouter } from "./routes/health.js";
 import { studentsRouter } from "./routes/students.js";
+import { subjectsRouter } from "./routes/subjects.js";
+import { questionsRouter } from "./routes/questions.js";
 
 const app = express();
 
@@ -31,6 +33,8 @@ app.use(express.json({ limit: "1mb" }));
 app.use("/api", healthRouter);
 app.use("/api/auth", authRouter);
 app.use("/api/students", studentsRouter);
+app.use("/api/subjects", subjectsRouter);
+app.use("/api/questions", questionsRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
