@@ -52,3 +52,33 @@ export const questions = sqliteTable("questions", {
   createdBy: text("created_by"),
   createdAt: text("created_at").notNull().default("CURRENT_TIMESTAMP"),
 });
+
+export const examSessions = sqliteTable("exam_sessions", {
+  id: text("id").primaryKey(),
+  studentId: text("student_id").notNull(),
+  subjectId: integer("subject_id").notNull(),
+  status: text("status", { enum: ["active", "submitted", "expired"] }).notNull().default("active"),
+  attemptNo: integer("attempt_no").notNull().default(1),
+  startedAt: text("started_at").notNull().default("CURRENT_TIMESTAMP"),
+  expiresAt: text("expires_at").notNull(),
+  submittedAt: text("submitted_at"),
+  lastActivityAt: text("last_activity_at").notNull().default("CURRENT_TIMESTAMP"),
+  totalQuestions: integer("total_questions").notNull().default(0),
+  answeredCount: integer("answered_count").notNull().default(0),
+  correctCount: integer("correct_count").notNull().default(0),
+  incorrectCount: integer("incorrect_count").notNull().default(0),
+  unansweredCount: integer("unanswered_count").notNull().default(0),
+  scorePct: integer("score_pct").notNull().default(0),
+  createdAt: text("created_at").notNull().default("CURRENT_TIMESTAMP"),
+  updatedAt: text("updated_at").notNull().default("CURRENT_TIMESTAMP"),
+});
+
+export const examSessionAnswers = sqliteTable("exam_session_answers", {
+  id: text("id").primaryKey(),
+  sessionId: text("session_id").notNull(),
+  questionId: text("question_id").notNull(),
+  answerIndex: integer("answer_index"),
+  flagged: integer("flagged", { mode: "boolean" }).notNull().default(false),
+  createdAt: text("created_at").notNull().default("CURRENT_TIMESTAMP"),
+  updatedAt: text("updated_at").notNull().default("CURRENT_TIMESTAMP"),
+});

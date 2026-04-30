@@ -71,12 +71,47 @@ sqlite.exec(`
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 
+  CREATE TABLE IF NOT EXISTS exam_sessions (
+    id TEXT PRIMARY KEY,
+    student_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    subject_id INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'submitted', 'expired')),
+    attempt_no INTEGER NOT NULL DEFAULT 1,
+    started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at TEXT NOT NULL,
+    submitted_at TEXT,
+    last_activity_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    total_questions INTEGER NOT NULL DEFAULT 0,
+    answered_count INTEGER NOT NULL DEFAULT 0,
+    correct_count INTEGER NOT NULL DEFAULT 0,
+    incorrect_count INTEGER NOT NULL DEFAULT 0,
+    unanswered_count INTEGER NOT NULL DEFAULT 0,
+    score_pct INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS exam_session_answers (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES exam_sessions(id) ON DELETE CASCADE,
+    question_id TEXT NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
+    answer_index INTEGER,
+    flagged INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(session_id, question_id)
+  );
+
   CREATE INDEX IF NOT EXISTS idx_users_student_id ON users(student_id);
   CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
   CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id);
   CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);
   CREATE INDEX IF NOT EXISTS idx_subjects_active ON subjects(active);
   CREATE INDEX IF NOT EXISTS idx_questions_subject_id ON questions(subject_id);
+  CREATE INDEX IF NOT EXISTS idx_exam_sessions_student_subject ON exam_sessions(student_id, subject_id);
+  CREATE INDEX IF NOT EXISTS idx_exam_sessions_status ON exam_sessions(status);
+  CREATE INDEX IF NOT EXISTS idx_exam_sessions_expires_at ON exam_sessions(expires_at);
+  CREATE INDEX IF NOT EXISTS idx_exam_answers_session ON exam_session_answers(session_id);
 `);
 
 let _db = drizzle(sqlite);

@@ -370,9 +370,19 @@ export default function AdminUploadPage() {
   const handleStudentUpload = async () => {
     if (!sFile) { showToast('⚠ Please select a CSV file first.'); return }
     setSState('uploading')
-    setSState('error')
-    showToast('⚠ Student CSV import is coming in Phase 3.')
-    setTimeout(() => setSState('idle'), 3000)
+    try {
+      const result = await api.students.uploadCsv(sFile)
+      setSState('done')
+      const skippedNote = result.skipped > 0 ? ` (${result.skipped} skipped)` : ''
+      showToast(`✅ ${result.inserted} students registered successfully!${skippedNote}`)
+      setSFile(null)
+      api.students.list({ limit: 1 }).then(r => setRegisteredCount(r.total)).catch(() => {})
+      setTimeout(() => setSState('idle'), 3000)
+    } catch (err) {
+      setSState('error')
+      showToast(`⚠ ${err instanceof Error ? err.message : 'Upload failed.'}`)
+      setTimeout(() => setSState('idle'), 3000)
+    }
   }
 
   const handleLogout = () => {

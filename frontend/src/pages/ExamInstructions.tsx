@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { api } from '../lib/apiClient'
 import { formatClassLabel, getUserInitials } from '../lib/auth'
 
 const Ic = {
@@ -89,6 +90,8 @@ export default function InstructionsPage() {
   const { session } = useAuth()
   const [agreed,   setAgreed]   = useState(false)
   const [showModal, setShowModal] = useState(false)
+  const [starting, setStarting] = useState(false)
+  const [startError, setStartError] = useState('')
 
   // ── Read subject passed from SelectSubjectPage ──────────────────
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -103,6 +106,23 @@ export default function InstructionsPage() {
   const studentName = session?.role === 'student' ? session.fullName : 'Student'
   const studentClass = session?.role === 'student' ? formatClassLabel(session.className ?? '') : ''
   const studentInitials = getUserInitials(studentName)
+
+  const handleStartExam = async () => {
+    if (!subjectData?.id || starting) return
+    setStarting(true)
+    setStartError('')
+    try {
+      const started = await api.exams.start(Number(subjectData.id))
+      sessionStorage.setItem('active_exam_session_id', started.sessionId)
+      navigate('/exam', { state: { subject: subjectData, sessionId: started.sessionId } })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to start exam session.'
+      setStartError(message)
+      setShowModal(false)
+    } finally {
+      setStarting(false)
+    }
+  }
 
   const rules = [
     { icon: Ic.list,       title: 'Total Questions',    desc: `This examination contains ${subjectQuestions} multiple-choice questions. All questions carry equal marks.` },
@@ -119,7 +139,7 @@ export default function InstructionsPage() {
         {showModal && (
           <ConfirmModal
             subjectName={subjectName}
-            onConfirm={() => navigate('/exam', { state: { subject: subjectData } })}
+            onConfirm={handleStartExam}
             onCancel={() => setShowModal(false)}
           />
         )}
@@ -257,6 +277,12 @@ export default function InstructionsPage() {
                 </p>
               </motion.div>
 
+              {startError && (
+                <div className="mb-6 p-4 rounded-xl text-sm font-semibold" style={{ backgroundColor: '#ffdad6', color: '#9e4036' }}>
+                  {startError}
+                </div>
+              )}
+
               {/* Footer actions */}
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.65, duration: 0.4 }}
@@ -282,15 +308,16 @@ export default function InstructionsPage() {
                   <motion.button
                     whileHover={agreed ? { y: -2, boxShadow: '0 8px 24px rgba(34,197,94,0.35)' } : {}}
                     whileTap={agreed ? { scale: 0.96 } : {}}
-                    onClick={() => agreed && setShowModal(true)}
+                    onClick={() => agreed && !starting && setShowModal(true)}
+                    disabled={starting}
                     className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-8 py-3.5 rounded-full font-bold text-sm text-white transition-all duration-200"
                     style={{
-                      background: agreed ? 'linear-gradient(135deg,#006e2f,#22c55e)' : '#d9dadb',
+                      background: agreed && !starting ? 'linear-gradient(135deg,#006e2f,#22c55e)' : '#d9dadb',
                       boxShadow: agreed ? '0 4px 16px rgba(34,197,94,0.25)' : 'none',
-                      cursor: agreed ? 'pointer' : 'not-allowed',
-                      color: agreed ? '#ffffff' : '#6d7b6c',
+                      cursor: agreed && !starting ? 'pointer' : 'not-allowed',
+                      color: agreed && !starting ? '#ffffff' : '#6d7b6c',
                     }}>
-                    I Understand, Start Exam
+                    {starting ? 'Starting...' : 'I Understand, Start Exam'}
                     {Ic.play}
                   </motion.button>
                 </div>
