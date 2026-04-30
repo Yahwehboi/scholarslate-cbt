@@ -81,11 +81,20 @@ export const api = {
         offset: number;
       }>(`/students?${qs.toString()}`);
     },
+
+    uploadCsv: (file: File) => {
+      const form = new FormData();
+      form.append("file", file);
+      return request<{ inserted: number; skipped: number; errors?: string[] }>("/students/upload", {
+        method: "POST",
+        body: form,
+      });
+    },
   },
 
-    subjects: {
-      list: () =>
-        request<{ subjects: ApiSubject[] }>("/subjects"),
+  subjects: {
+    list: () =>
+      request<{ subjects: ApiSubject[] }>("/subjects"),
 
       create: (body: {
         name: string; code: string; iconKey?: string; iconBg?: string;
@@ -151,6 +160,82 @@ export const api = {
 
       delete: (id: string) =>
         request<{ message: string }>(`/questions/${id}`, { method: "DELETE" }),
+    },
+
+    exams: {
+      start: (subjectId: number) =>
+        request<{
+          sessionId: string;
+          status: "active" | "submitted" | "expired";
+          expiresAt: string;
+          subjectId: number;
+          attemptNo: number;
+        }>("/exams/start", {
+          method: "POST",
+          body: JSON.stringify({ subjectId }),
+        }),
+
+      getSession: (sessionId: string) =>
+        request<{
+          session: {
+            id: string;
+            status: "active" | "submitted" | "expired";
+            subjectId: number;
+            attemptNo: number;
+            startedAt: string;
+            expiresAt: string;
+            remainingSeconds: number;
+            totalQuestions: number;
+            canEdit: boolean;
+          };
+          subject: {
+            id: number;
+            name: string;
+            timeLimit: number;
+          };
+          questions: {
+            id: string;
+            text: string;
+            options: string[];
+            difficulty: "Easy" | "Standard" | "Hard";
+            answer: number | null;
+            flagged: boolean;
+          }[];
+        }>(`/exams/session/${sessionId}`),
+
+      saveAnswer: (sessionId: string, body: { questionId: string; answer: number | null }) =>
+        request<{ sessionId: string; questionId: string; answer: number | null }>(`/exams/session/${sessionId}/answer`, {
+          method: "PATCH",
+          body: JSON.stringify(body),
+        }),
+
+      setFlag: (sessionId: string, body: { questionId: string; flagged: boolean }) =>
+        request<{ sessionId: string; questionId: string; flagged: boolean }>(`/exams/session/${sessionId}/flag`, {
+          method: "PATCH",
+          body: JSON.stringify(body),
+        }),
+
+      submit: (sessionId: string) =>
+        request<{
+          summary: {
+            sessionId: string;
+            subjectId: number;
+            status: "submitted" | "expired";
+            totalQuestions: number;
+            answered: number;
+            correct: number;
+            incorrect: number;
+            unanswered: number;
+            scorePct: number;
+            submittedAt: string | null;
+          };
+        }>(`/exams/session/${sessionId}/submit`, { method: "POST" }),
+
+      reportViolation: (sessionId: string, type: "tab_switch" | "window_blur" | "unauthorized_key") =>
+        request<{ recorded: boolean }>(`/exams/session/${sessionId}/violation`, {
+          method: "POST",
+          body: JSON.stringify({ type }),
+        }),
     },
 };
 

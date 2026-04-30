@@ -11,6 +11,7 @@ import { healthRouter } from "./routes/health.js";
 import { studentsRouter } from "./routes/students.js";
 import { subjectsRouter } from "./routes/subjects.js";
 import { questionsRouter } from "./routes/questions.js";
+import { examsRouter } from "./routes/exams.js";
 
 const app = express();
 
@@ -35,6 +36,7 @@ app.use("/api/auth", authRouter);
 app.use("/api/students", studentsRouter);
 app.use("/api/subjects", subjectsRouter);
 app.use("/api/questions", questionsRouter);
+app.use("/api/exams", examsRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

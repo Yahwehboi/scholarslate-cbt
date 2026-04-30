@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { api, type ApiQuestion } from '../lib/apiClient'
+import { api } from '../lib/apiClient'
 import { formatClassLabel, getUserInitials } from '../lib/auth'
 
 const Ic = {
@@ -27,7 +27,8 @@ type RuntimeQuestion = {
   id: string
   text: string
   options: string[]
-  correctAnswer?: number
+  answer: number | null
+  flagged: boolean
 }
 
 // ── Scientific Calculator ─────────────────────────────────────────
@@ -204,46 +205,84 @@ export default function ExamPage(){
   // ── Read subject from router state ─────────────────────────────
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const subjectData    = (location.state as any)?.subject
+  const locationSessionId = (location.state as { sessionId?: string } | null)?.sessionId
+  const resolvedSessionId = locationSessionId || sessionStorage.getItem('active_exam_session_id') || ''
   const subjectName    = subjectData?.name      ?? 'Mathematics'
-  const subjectId      = Number(subjectData?.id)
-  const examDuration   = subjectData?.time      ? subjectData.time * 60 : 60 * 60
+  const [sessionId] = useState(resolvedSessionId)
+  const [serverSubjectName, setServerSubjectName] = useState(subjectName)
+  const [canEdit, setCanEdit] = useState(true)
   const [questions, setQuestions] = useState<RuntimeQuestion[]>([])
   const [loadingQuestions, setLoadingQuestions] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [submitError, setSubmitError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [toast, setToast] = useState('')
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden' && sessionId) {
+        setToast('⚠ Warning: Navigating away from the exam tab is prohibited. This incident has been recorded.')
+        setTimeout(() => setToast(''), 6000)
+        api.exams.reportViolation(sessionId, "tab_switch").catch(console.error)
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }, [sessionId])
 
   useEffect(() => {
     setLoadError('')
 
-    if (!Number.isFinite(subjectId) || subjectId <= 0) {
+    if (!sessionId) {
       setQuestions([])
-      setLoadError('Invalid subject context. Please reselect a subject.')
+      setLoadError('No active exam session found. Start from the instructions page.')
       setLoadingQuestions(false)
       return
     }
 
+    let mounted = true
     setLoadingQuestions(true)
-    api.questions.listBySubject(subjectId)
-      .then((res) => {
-        if (!res.questions.length) {
-          setQuestions([])
-          return
-        }
 
-        const mapped = res.questions.map((q: ApiQuestion) => ({
+    api.exams.getSession(sessionId)
+      .then((res) => {
+        if (!mounted) return
+
+        setServerSubjectName(res.subject.name)
+        setCanEdit(res.session.canEdit)
+        setTimeLeft(res.session.remainingSeconds)
+
+        const mapped = res.questions.map((q) => ({
           id: q.id,
           text: q.text,
           options: q.options,
-          correctAnswer: q.correctAnswer,
+          answer: q.answer,
+          flagged: q.flagged,
         }))
+
         setQuestions(mapped)
+
+        const answerState: Record<string, number> = {}
+        const flaggedState = new Set<string>()
+        for (const q of mapped) {
+          if (q.answer !== null) answerState[q.id] = q.answer
+          if (q.flagged) flaggedState.add(q.id)
+        }
+        setAnswers(answerState)
+        setFlagged(flaggedState)
       })
-      .catch(() => {
+      .catch((err) => {
+        if (!mounted) return
         setQuestions([])
-        setLoadError('Unable to load questions from server. Please try again.')
+        setLoadError(err instanceof Error ? err.message : 'Unable to load exam session.')
       })
-      .finally(() => setLoadingQuestions(false))
-  }, [subjectId])
+      .finally(() => {
+        if (mounted) setLoadingQuestions(false)
+      })
+
+    return () => {
+      mounted = false
+    }
+  }, [sessionId])
 
   const QUESTIONS      = questions
   const TOTAL          = QUESTIONS.length
@@ -251,7 +290,7 @@ export default function ExamPage(){
   const [current,setCurrent]=useState(0)
   const [answers,setAnswers]=useState<Record<string,number>>({})
   const [flagged,setFlagged]=useState<Set<string>>(new Set())
-  const [timeLeft,setTimeLeft]=useState(examDuration)
+  const [timeLeft,setTimeLeft]=useState(0)
   const [showSubmit,setShowSubmit]=useState(false)
   const [showResources,setShowResources]=useState(false)
   const [fontSize,setFontSize]=useState(18)
@@ -264,36 +303,36 @@ export default function ExamPage(){
   const flaggedCount=flagged.size
   const isWarning=timeLeft<300
 
-  const submitExam=useCallback(()=>{
-    if (TOTAL === 0) {
-      navigate('/result',{state:{correct:0,incorrect:0,unanswered:0,score:0,total:0,timeUsed:'0m 00s',subject:subjectName}})
-      return
-    }
-
-    const hasFullAnswerKey = QUESTIONS.every((question) => question.correctAnswer !== undefined)
-    if (!hasFullAnswerKey) {
+  const submitExam = useCallback(async () => {
+    if (!sessionId || submitting) return
+    setSubmitError('')
+    setSubmitting(true)
+    try {
+      const res = await api.exams.submit(sessionId)
+      const s = res.summary
+      sessionStorage.removeItem('active_exam_session_id')
+      navigate('/result', {
+        state: {
+          correct: s.correct,
+          incorrect: s.incorrect,
+          unanswered: s.unanswered,
+          score: s.scorePct,
+          total: s.totalQuestions,
+          timeUsed: 'Server-timed',
+          subject: serverSubjectName,
+        },
+      })
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : 'Unable to submit exam now.')
+    } finally {
+      setSubmitting(false)
       setShowSubmit(false)
-      setSubmitError('Exam submission is not connected yet. Phase 3 submit endpoint is required for real grading.')
-      return
     }
-
-    const secondsUsed=examDuration-timeLeft
-    const mins=Math.floor(secondsUsed/60),secs=secondsUsed%60
-    const timeUsed=`${mins}m ${String(secs).padStart(2,'0')}s`
-    let correct=0,incorrect=0,unanswered=0
-
-    QUESTIONS.forEach(q=>{
-      if(answers[q.id]===undefined)unanswered++
-      else if(answers[q.id]===q.correctAnswer)correct++
-      else incorrect++
-    })
-    const score=Math.round((correct/TOTAL)*100)
-    navigate('/result',{state:{correct,incorrect,unanswered,score,total:TOTAL,timeUsed,subject:subjectName}})
-  },[answers,timeLeft,navigate,examDuration,QUESTIONS,TOTAL,subjectName])
+  }, [navigate, serverSubjectName, sessionId, submitting])
 
   useEffect(()=>{
     if (loadingQuestions || TOTAL === 0) return
-    if(timeLeft<=0){submitExam();return}
+    if(timeLeft<=0){void submitExam();return}
     const t=setInterval(()=>setTimeLeft(s=>s-1),1000)
     return()=>clearInterval(t)
   },[timeLeft,submitExam,loadingQuestions,TOTAL])
@@ -303,9 +342,38 @@ export default function ExamPage(){
     return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
   },[])
 
-  const selectAnswer=(i:number)=>setAnswers(prev=>({...prev,[q.id]:i}))
-  const clearAnswer=()=>setAnswers(prev=>{const n={...prev};delete n[q.id];return n})
-  const toggleFlag=()=>setFlagged(prev=>{const n=new Set(prev);n.has(q.id)?n.delete(q.id):n.add(q.id);return n})
+  const selectAnswer = (i: number) => {
+    setAnswers((prev) => ({ ...prev, [q.id]: i }))
+    if (!sessionId || !canEdit) return
+    void api.exams.saveAnswer(sessionId, { questionId: q.id, answer: i }).catch(() => {
+      setSubmitError('Failed to autosave answer. Check connection and continue.')
+    })
+  }
+
+  const clearAnswer = () => {
+    setAnswers((prev) => {
+      const n = { ...prev }
+      delete n[q.id]
+      return n
+    })
+    if (!sessionId || !canEdit) return
+    void api.exams.saveAnswer(sessionId, { questionId: q.id, answer: null }).catch(() => {
+      setSubmitError('Failed to clear answer on server.')
+    })
+  }
+
+  const toggleFlag = () => {
+    const nextFlagged = !flagged.has(q.id)
+    setFlagged((prev) => {
+      const n = new Set(prev)
+      n.has(q.id) ? n.delete(q.id) : n.add(q.id)
+      return n
+    })
+    if (!sessionId || !canEdit) return
+    void api.exams.setFlag(sessionId, { questionId: q.id, flagged: nextFlagged }).catch(() => {
+      setSubmitError('Failed to update flag state on server.')
+    })
+  }
 
   const nodeStyle=(qid:string)=>{
     if(qid===q.id)              return {bg:'#ffffff',color:'#006e2f',border:'2px solid #006e2f'}
@@ -321,7 +389,7 @@ export default function ExamPage(){
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#f8f9fa' }}>
         <div className="text-center">
           <h2 className="text-xl font-extrabold" style={{ fontFamily: 'Manrope,sans-serif', color: '#191c1d' }}>Loading exam questions...</h2>
-          <p className="text-sm mt-2" style={{ color: '#6d7b6c' }}>Preparing {subjectName} question set.</p>
+          <p className="text-sm mt-2" style={{ color: '#6d7b6c' }}>Preparing {serverSubjectName} question set.</p>
         </div>
       </div>
     )
@@ -356,6 +424,15 @@ export default function ExamPage(){
             {submitError}
           </div>
         )}
+        <AnimatePresence>
+          {toast && (
+            <motion.div initial={{ opacity: 0, y: -20, x: '-50%' }} animate={{ opacity: 1, y: 0, x: '-50%' }} exit={{ opacity: 0, y: -20, x: '-50%' }}
+              className="fixed top-6 left-1/2 z-50 px-5 py-3 rounded-xl text-sm font-bold"
+              style={{ backgroundColor: '#ffdad6', color: '#9e4036', boxShadow: '0 8px 24px rgba(25,28,29,0.12)', maxWidth: '90vw', border: '1px solid rgba(158,64,54,0.2)' }}>
+              {toast}
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Navbar — single timer */}
         <nav className="sticky top-0 z-30 flex items-center justify-between px-5 md:px-8 h-16"
@@ -400,10 +477,10 @@ export default function ExamPage(){
           <header className="col-span-12 mb-2">
             <div className="mb-4">
               <span className="text-xs font-bold uppercase tracking-widest block mb-1" style={{color:'#006e2f'}}>
-                {subjectName} — School CBT
+                {serverSubjectName} — School CBT
               </span>
               <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight" style={{fontFamily:'Manrope,sans-serif',color:'#191c1d'}}>
-                {subjectName} Examination
+                {serverSubjectName} Examination
               </h1>
             </div>
             <div className="w-full h-2.5 rounded-full overflow-hidden" style={{backgroundColor:'#e7e8e9'}}>
@@ -429,8 +506,9 @@ export default function ExamPage(){
                   </div>
                   <div className="flex-1 h-px" style={{backgroundColor:'#edeeef'}}/>
                   <motion.button whileTap={{scale:0.93}} onClick={toggleFlag}
+                    disabled={!canEdit}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all"
-                    style={{backgroundColor:flagged.has(q.id)?'rgba(158,64,54,0.1)':'#f3f4f5',color:flagged.has(q.id)?'#9e4036':'#6d7b6c',border:flagged.has(q.id)?'1px solid rgba(158,64,54,0.2)':'1px solid transparent'}}>
+                    style={{backgroundColor:flagged.has(q.id)?'rgba(158,64,54,0.1)':'#f3f4f5',color:flagged.has(q.id)?'#9e4036':'#6d7b6c',border:flagged.has(q.id)?'1px solid rgba(158,64,54,0.2)':'1px solid transparent',opacity:canEdit?1:0.55,cursor:canEdit?'pointer':'not-allowed'}}>
                     {Ic.flag} {flagged.has(q.id)?'Flagged':'Flag for Review'}
                   </motion.button>
                 </div>
@@ -441,7 +519,7 @@ export default function ExamPage(){
                     return(
                       <motion.div key={i} whileHover={{x:2}} whileTap={{scale:0.99}} onClick={()=>selectAnswer(i)}
                         className="flex items-center gap-4 p-5 rounded-xl cursor-pointer transition-all duration-150"
-                        style={{backgroundColor:sel?'#e8f5ed':'#f3f4f5',border:`1.5px solid ${sel?'#006e2f':'transparent'}`}}>
+                        style={{backgroundColor:sel?'#e8f5ed':'#f3f4f5',border:`1.5px solid ${sel?'#006e2f':'transparent'}`,opacity:canEdit?1:0.7,pointerEvents:canEdit?'auto':'none'}}>
                         <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-black flex-shrink-0"
                           style={{backgroundColor:sel?'#006e2f':'#fff',color:sel?'#fff':'#6d7b6c',boxShadow:sel?'none':'0 1px 4px rgba(25,28,29,0.1)'}}>
                           {letters[i]}
@@ -463,15 +541,17 @@ export default function ExamPage(){
                   </motion.button>
                   <div className="flex gap-3">
                     <motion.button whileTap={{scale:0.96}} onClick={clearAnswer}
+                      disabled={!canEdit}
                       className="flex items-center gap-1.5 px-4 py-3 rounded-xl font-bold text-sm"
-                      style={{backgroundColor:'#f3f4f5',color:'#6d7b6c',border:'1px solid #e7e8e9'}}>
+                      style={{backgroundColor:'#f3f4f5',color:'#6d7b6c',border:'1px solid #e7e8e9',opacity:canEdit?1:0.55,cursor:canEdit?'pointer':'not-allowed'}}>
                       {Ic.clear} Clear
                     </motion.button>
                     {current===TOTAL-1?(
                       <motion.button whileHover={{y:-1}} whileTap={{scale:0.96}} onClick={()=>setShowSubmit(true)}
+                        disabled={submitting}
                         className="flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm text-white"
-                        style={{background:'linear-gradient(135deg,#006e2f,#22c55e)',boxShadow:'0 4px 14px rgba(34,197,94,0.3)'}}>
-                        {Ic.submit} Submit Exam
+                        style={{background:'linear-gradient(135deg,#006e2f,#22c55e)',boxShadow:'0 4px 14px rgba(34,197,94,0.3)',opacity:submitting?0.75:1}}>
+                        {Ic.submit} {submitting ? 'Submitting...' : 'Submit Exam'}
                       </motion.button>
                     ):(
                       <motion.button whileHover={{y:-1}} whileTap={{scale:0.96}} onClick={()=>setCurrent(c=>Math.min(TOTAL-1,c+1))}
@@ -530,11 +610,12 @@ export default function ExamPage(){
                 <p style={{color:'#3d4a3d',lineHeight:1.6}}><span className="font-bold">{flaggedCount} flagged</span> · <span className="font-bold">{TOTAL-answered} unanswered</span>. Answer all before submitting.</p>
               </div>
               <motion.button whileTap={{scale:0.97}} onClick={()=>setShowSubmit(true)}
+                disabled={submitting}
                 className="w-full py-4 rounded-xl font-black uppercase tracking-widest text-sm transition-all"
-                style={{backgroundColor:'#e7e8e9',color:'#191c1d',fontFamily:'Manrope,sans-serif'}}
+                style={{backgroundColor:'#e7e8e9',color:'#191c1d',fontFamily:'Manrope,sans-serif',opacity:submitting?0.7:1,cursor:submitting?'not-allowed':'pointer'}}
                 onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.background='linear-gradient(135deg,#006e2f,#22c55e)';(e.currentTarget as HTMLElement).style.color='#fff'}}
                 onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.background='#e7e8e9';(e.currentTarget as HTMLElement).style.color='#191c1d'}}>
-                Submit Examination
+                {submitting ? 'Submitting...' : 'Submit Examination'}
               </motion.button>
             </div>
             <motion.button whileHover={{y:-2}} whileTap={{scale:0.97}} onClick={()=>setShowResources(true)}
