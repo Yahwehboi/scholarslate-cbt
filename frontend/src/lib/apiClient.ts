@@ -243,6 +243,14 @@ export const api = {
           body: JSON.stringify({ type }),
         }),
     },
+
+    admin: {
+      getResults: () =>
+        request<{ results: AdminResult[] }>("/admin/results"),
+
+      getMetrics: () =>
+        request<{ totalExams: number; passed: number; averageScore: number; failed: number }>("/admin/results/metrics"),
+    },
 };
 
   // ─── Shared API types ─────────────────────────────────────────────────────────
@@ -266,4 +274,9 @@ export const api = {
     attemptNo: number; totalQuestions: number; answeredCount: number;
     correctCount: number; incorrectCount: number; unansweredCount: number;
     scorePct: number; startedAt: string; submittedAt: string | null;
+  };
+
+  export type AdminResult = {
+    id: string; studentId: string; studentName: string; subject: string;
+    score: number; status: "Pass" | "Fail"; date: string;
   };

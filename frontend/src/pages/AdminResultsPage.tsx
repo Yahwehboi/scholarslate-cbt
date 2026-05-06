@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { api, type AdminResult } from '../lib/apiClient'
 
 const Ic = {
   admin:    <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg>,
@@ -12,11 +13,6 @@ const Ic = {
   menu:     <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>,
 }
 
-const RESULTS = [
-  { id: 'R-1001', studentId: 'SS2/2024/001', studentName: 'Amina Yusuf', subject: 'Mathematics', score: 85, status: 'Pass', date: 'Apr 22, 2026' },
-  { id: 'R-1002', studentId: 'SS2/2024/002', studentName: 'Emeka Eze', subject: 'Physics', score: 68, status: 'Pass', date: 'Apr 22, 2026' },
-  { id: 'R-1003', studentId: 'SS2/2024/014', studentName: 'Ruth James', subject: 'Chemistry', score: 44, status: 'Fail', date: 'Apr 21, 2026' },
-]
 
 function AdminSidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const navigate = useNavigate()
@@ -72,14 +68,32 @@ export default function AdminResultsPage() {
   const navigate = useNavigate()
   const { logout } = useAuth()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [results, setResults] = useState<AdminResult[]>([])
+  const [metrics, setMetrics] = useState({ totalExams: 0, passed: 0, averageScore: 0, failed: 0 })
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const [resData, metData] = await Promise.all([
+          api.admin.getResults(),
+          api.admin.getMetrics()
+        ])
+        setResults(resData.results)
+        setMetrics(metData)
+      } catch (err) {
+        console.error("Failed to load admin analytics", err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadData()
+  }, [])
 
   const handleLogout = () => {
     logout()
     navigate('/login', { replace: true })
   }
-
-  const passCount = RESULTS.filter(r => r.status === 'Pass').length
-  const avgScore = Math.round(RESULTS.reduce((acc, row) => acc + row.score, 0) / RESULTS.length)
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#f8f9fa' }}>
@@ -108,19 +122,19 @@ export default function AdminResultsPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             <div className="p-5 rounded-xl" style={{ backgroundColor: '#ffffff', boxShadow: '0 2px 12px rgba(25,28,29,0.06)' }}>
               <p className="text-xs" style={{ color: '#6d7b6c' }}>Total Results</p>
-              <p className="text-3xl font-black" style={{ color: '#191c1d', fontFamily: 'Manrope,sans-serif' }}>{RESULTS.length}</p>
+              <p className="text-3xl font-black" style={{ color: '#191c1d', fontFamily: 'Manrope,sans-serif' }}>{loading ? '-' : metrics.totalExams}</p>
             </div>
             <div className="p-5 rounded-xl" style={{ backgroundColor: '#ffffff', boxShadow: '0 2px 12px rgba(25,28,29,0.06)' }}>
               <p className="text-xs" style={{ color: '#6d7b6c' }}>Passed</p>
-              <p className="text-3xl font-black" style={{ color: '#006e2f', fontFamily: 'Manrope,sans-serif' }}>{passCount}</p>
+              <p className="text-3xl font-black" style={{ color: '#006e2f', fontFamily: 'Manrope,sans-serif' }}>{loading ? '-' : metrics.passed}</p>
             </div>
             <div className="p-5 rounded-xl" style={{ backgroundColor: '#ffffff', boxShadow: '0 2px 12px rgba(25,28,29,0.06)' }}>
               <p className="text-xs" style={{ color: '#6d7b6c' }}>Average Score</p>
-              <p className="text-3xl font-black" style={{ color: '#2f6a3c', fontFamily: 'Manrope,sans-serif' }}>{avgScore}%</p>
+              <p className="text-3xl font-black" style={{ color: '#2f6a3c', fontFamily: 'Manrope,sans-serif' }}>{loading ? '-' : metrics.averageScore}%</p>
             </div>
             <div className="p-5 rounded-xl" style={{ backgroundColor: '#ffffff', boxShadow: '0 2px 12px rgba(25,28,29,0.06)' }}>
               <p className="text-xs" style={{ color: '#6d7b6c' }}>Fail Count</p>
-              <p className="text-3xl font-black" style={{ color: '#9e4036', fontFamily: 'Manrope,sans-serif' }}>{RESULTS.length - passCount}</p>
+              <p className="text-3xl font-black" style={{ color: '#9e4036', fontFamily: 'Manrope,sans-serif' }}>{loading ? '-' : metrics.failed}</p>
             </div>
           </div>
 
@@ -135,11 +149,11 @@ export default function AdminResultsPage() {
               <span>Date</span>
             </div>
 
-            {RESULTS.map((row, index) => (
+            {results.map((row, index) => (
               <div key={row.id} className="grid px-6 py-4 items-center"
                 style={{ gridTemplateColumns: '1fr 1.2fr 1.3fr 1fr 1fr 1fr', borderTop: index === 0 ? 'none' : '1px solid #f3f4f5' }}>
-                <span className="text-sm" style={{ color: '#6d7b6c' }}>{row.id}</span>
-                <span className="text-sm" style={{ color: '#191c1d' }}>{row.studentName} ({row.studentId})</span>
+                <span className="text-sm truncate mr-2" style={{ color: '#6d7b6c' }}>{row.id}</span>
+                <span className="text-sm truncate mr-2" style={{ color: '#191c1d' }}>{row.studentName} ({row.studentId})</span>
                 <span className="text-sm" style={{ color: '#3d4a3d' }}>{row.subject}</span>
                 <span className="text-sm font-bold" style={{ color: '#191c1d' }}>{row.score}%</span>
                 <span className="text-xs font-bold px-2.5 py-1 rounded-full w-fit"
@@ -149,6 +163,9 @@ export default function AdminResultsPage() {
                 <span className="text-sm" style={{ color: '#6d7b6c' }}>{row.date}</span>
               </div>
             ))}
+            {results.length === 0 && !loading && (
+              <div className="p-8 text-center" style={{ color: '#6d7b6c' }}>No results found.</div>
+            )}
           </div>
         </main>
       </div>

@@ -12,6 +12,7 @@ import { studentsRouter } from "./routes/students.js";
 import { subjectsRouter } from "./routes/subjects.js";
 import { questionsRouter } from "./routes/questions.js";
 import { examsRouter } from "./routes/exams.js";
+import { adminRouter } from "./routes/admin.js";
 
 const app = express();
 
@@ -37,6 +38,7 @@ app.use("/api/students", studentsRouter);
 app.use("/api/subjects", subjectsRouter);
 app.use("/api/questions", questionsRouter);
 app.use("/api/exams", examsRouter);
+app.use("/api/admin", adminRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
