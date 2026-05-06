@@ -90,6 +90,12 @@ export const api = {
         body: form,
       });
     },
+
+    getResults: () =>
+      request<{ results: ApiResult[] }>("/students/results"),
+
+    getResult: (resultId: string) =>
+      request<{ result: ApiResult }>(`/students/results/${resultId}`),
   },
 
   subjects: {
@@ -252,4 +258,12 @@ export const api = {
     id: string; subjectId: number; text: string;
     options: string[]; correctAnswer?: number;
     difficulty: "Easy" | "Standard" | "Hard"; createdAt: string;
+  };
+
+  export type ApiResult = {
+    id: string; subjectId: number; subjectName: string; subjectCode: string;
+    iconKey: string; iconBg: string; status: "submitted" | "expired";
+    attemptNo: number; totalQuestions: number; answeredCount: number;
+    correctCount: number; incorrectCount: number; unansweredCount: number;
+    scorePct: number; startedAt: string; submittedAt: string | null;
   };

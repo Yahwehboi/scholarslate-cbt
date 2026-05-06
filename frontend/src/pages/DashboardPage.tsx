@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { api, type ApiResult } from '../lib/apiClient'
 import { useAuth } from '../context/AuthContext'
 import { formatClassLabel, getUserInitials } from '../lib/auth'
 
@@ -201,12 +202,17 @@ const fadeUp = (delay: number) => ({
   transition: { delay, duration: 0.4, ease: 'easeOut' as const },
 })
 
-function StatCards() {
+function StatCards({ results }: { results: ApiResult[] }) {
+  const totalExams = results.length
+  const completed = results.filter(r => r.scorePct >= 50).length
+  const avgScore = totalExams > 0 ? Math.round(results.reduce((acc, r) => acc + r.scorePct, 0) / totalExams) : 0
+  const bestScore = totalExams > 0 ? Math.max(...results.map(r => r.scorePct)) : 0
+
   const stats = [
-    { label: 'Available Subjects', value: '12', sub: '+2 new this term', icon: Ic.library, accent: '#006e2f', bg: '#ffffff' },
-    { label: 'Completed', value: '08', sub: null, progress: 66, icon: Ic.check, accent: '#2f6a3c', bg: '#ffffff' },
-    { label: 'Remaining Attempts', value: '03', sub: 'Expiring in 4 days', icon: Ic.history, accent: '#9e4036', bg: '#ffffff' },
-    { label: 'Total Score', value: '842', sub: 'Top 5% of class', icon: Ic.star, accent: '#004b1e', bg: '#22c55e', dark: true },
+    { label: 'Total Exams', value: totalExams.toString(), sub: 'Exams taken', icon: Ic.library, accent: '#006e2f', bg: '#ffffff' },
+    { label: 'Passed', value: completed.toString(), sub: null, progress: totalExams > 0 ? Math.round((completed / totalExams) * 100) : 0, icon: Ic.check, accent: '#2f6a3c', bg: '#ffffff' },
+    { label: 'Average Score', value: `${avgScore}%`, sub: 'Across all subjects', icon: Ic.history, accent: '#9e4036', bg: '#ffffff' },
+    { label: 'Best Score', value: `${bestScore}%`, sub: 'Highest achieved', icon: Ic.star, accent: '#004b1e', bg: '#22c55e', dark: true },
   ]
 
   return (
@@ -340,13 +346,27 @@ function MockExamSection() {
 }
 
 // ── Recent activity table ──────────────────────────────────────────
-function RecentActivity() {
-  const rows = [
-    { subject: 'Mathematics', icon: Ic.math,    iconBg: '#fff3e0', iconColor: '#e65100', date: 'Apr 2, 2026', score: '92/100', status: 'Excellent',  statusBg: '#afefb4', statusColor: '#146b35' },
-    { subject: 'English Language', icon: Ic.english, iconBg: '#e3f2fd', iconColor: '#1565c0', date: 'Mar 28, 2026', score: '78/100', status: 'Good',  statusBg: '#e8f5ed', statusColor: '#2f6a3c' },
-    { subject: 'Biology',    icon: Ic.science,  iconBg: '#f3e5f5', iconColor: '#6a1b9a', date: 'Mar 24, 2026', score: '65/100', status: 'Average',    statusBg: '#edeeef', statusColor: '#3d4a3d' },
-    { subject: 'Chemistry',  icon: Ic.science,  iconBg: '#e0f7fa', iconColor: '#006064', date: 'Mar 20, 2026', score: '89/100', status: 'Excellent',  statusBg: '#afefb4', statusColor: '#146b35' },
-  ]
+const ICON_MAP: Record<string, React.ReactNode> = {
+  math: Ic.math, science: Ic.science, english: Ic.english, book: Ic.book
+}
+
+function RecentActivity({ results }: { results: ApiResult[] }) {
+  const navigate = useNavigate()
+  const rows = results.slice(0, 4).map(r => {
+    const passed = r.scorePct >= 50
+    return {
+      id: r.id,
+      subject: r.subjectName,
+      icon: ICON_MAP[r.iconKey] || Ic.book,
+      iconBg: r.iconBg,
+      iconColor: '#006e2f',
+      date: r.submittedAt ? new Date(r.submittedAt).toLocaleDateString(undefined, {month:'short', day:'numeric', year:'numeric'}) : '—',
+      score: `${r.correctCount}/${r.totalQuestions}`,
+      status: passed ? 'Pass' : 'Fail',
+      statusBg: passed ? '#afefb4' : '#ffdad6',
+      statusColor: passed ? '#146b35' : '#9e4036'
+    }
+  })
 
   return (
     <motion.div {...fadeUp(0.36)} className="lg:col-span-2">
@@ -354,7 +374,7 @@ function RecentActivity() {
         <h4 className="text-lg font-bold" style={{ fontFamily: 'Manrope,sans-serif', color: '#191c1d' }}>
           Recent Activity
         </h4>
-        <button className="text-sm font-semibold transition-colors" style={{ color: '#006e2f' }}>
+        <button onClick={() => navigate('/results-history')} className="text-sm font-semibold transition-colors" style={{ color: '#006e2f' }}>
           View All
         </button>
       </div>
@@ -376,11 +396,12 @@ function RecentActivity() {
             initial={{ opacity: 0, x: -10 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.4 + i * 0.06 }}
-            className="grid px-5 py-4 items-center transition-colors duration-150"
+            className="grid px-5 py-4 items-center transition-colors duration-150 cursor-pointer"
             style={{
               gridTemplateColumns: '2fr 1fr 1fr 1fr',
               borderTop: i === 0 ? 'none' : '1px solid #edeeef',
             }}
+            onClick={() => navigate(`/result/${row.id}`)}
             onMouseEnter={e => ((e.currentTarget as HTMLElement).style.backgroundColor = '#f3f4f5')}
             onMouseLeave={e => ((e.currentTarget as HTMLElement).style.backgroundColor = 'transparent')}
           >
@@ -480,6 +501,15 @@ function ComingUp() {
 // ── Dashboard Page root ────────────────────────────────────────────
 export default function DashboardPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [results, setResults] = useState<ApiResult[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    api.students.getResults()
+      .then(res => setResults(res.results))
+      .catch(console.error)
+      .finally(() => setLoading(false))
+  }, [])
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#f8f9fa' }}>
@@ -524,16 +554,22 @@ export default function DashboardPage() {
           </motion.section>
 
           {/* Stats */}
-          <StatCards />
+          {loading ? (
+            <div className="flex justify-center items-center py-10" style={{color:'#6d7b6c'}}>Loading dashboard...</div>
+          ) : (
+            <>
+              <StatCards results={results} />
 
-          {/* Mock exams */}
-          <MockExamSection />
+              {/* Mock exams */}
+              <MockExamSection />
 
-          {/* Bottom split: table + coming up */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
-            <RecentActivity />
-            <ComingUp />
-          </div>
+              {/* Bottom split: table + coming up */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+                <RecentActivity results={results} />
+                <ComingUp />
+              </div>
+            </>
+          )}
 
         </main>
       </div>

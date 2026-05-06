@@ -1,9 +1,9 @@
 import { Router, type Request, type Response } from "express";
-import { like, or, eq, and } from "drizzle-orm";
+import { like, or, eq, and, inArray, desc } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import multer from "multer";
 import { db } from "../db/connection.js";
-import { users } from "../db/schema.js";
+import { users, examSessions, subjects } from "../db/schema.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import { listStudentsQuerySchema, bulkStudentRowSchema } from "../validation/auth.schemas.js";
 import { ApiError } from "../middleware/error-handler.js";
@@ -173,5 +173,91 @@ studentsRouter.post(
         errors: errors.length > 0 ? errors : undefined,
       },
     });
+  }
+);
+
+// GET /api/students/results
+studentsRouter.get(
+  "/results",
+  requireAuth,
+  requireRole(["student"]),
+  async (req: Request, res: Response) => {
+    const results = await db
+      .select({
+        id: examSessions.id,
+        subjectId: examSessions.subjectId,
+        subjectName: subjects.name,
+        subjectCode: subjects.code,
+        iconKey: subjects.iconKey,
+        iconBg: subjects.iconBg,
+        status: examSessions.status,
+        attemptNo: examSessions.attemptNo,
+        totalQuestions: examSessions.totalQuestions,
+        answeredCount: examSessions.answeredCount,
+        correctCount: examSessions.correctCount,
+        incorrectCount: examSessions.incorrectCount,
+        unansweredCount: examSessions.unansweredCount,
+        scorePct: examSessions.scorePct,
+        startedAt: examSessions.startedAt,
+        submittedAt: examSessions.submittedAt,
+        createdAt: examSessions.createdAt,
+      })
+      .from(examSessions)
+      .innerJoin(subjects, eq(examSessions.subjectId, subjects.id))
+      .where(
+        and(
+          eq(examSessions.studentId, req.auth!.userId),
+          inArray(examSessions.status, ["submitted", "expired"])
+        )
+      )
+      .orderBy(desc(examSessions.submittedAt))
+      .all();
+
+    res.json({ success: true, data: { results } });
+  }
+);
+
+// GET /api/students/results/:resultId
+studentsRouter.get(
+  "/results/:resultId",
+  requireAuth,
+  requireRole(["student"]),
+  async (req: Request, res: Response) => {
+    const { resultId } = req.params;
+    const result = await db
+      .select({
+        id: examSessions.id,
+        subjectId: examSessions.subjectId,
+        subjectName: subjects.name,
+        subjectCode: subjects.code,
+        iconKey: subjects.iconKey,
+        iconBg: subjects.iconBg,
+        status: examSessions.status,
+        attemptNo: examSessions.attemptNo,
+        totalQuestions: examSessions.totalQuestions,
+        answeredCount: examSessions.answeredCount,
+        correctCount: examSessions.correctCount,
+        incorrectCount: examSessions.incorrectCount,
+        unansweredCount: examSessions.unansweredCount,
+        scorePct: examSessions.scorePct,
+        startedAt: examSessions.startedAt,
+        submittedAt: examSessions.submittedAt,
+      })
+      .from(examSessions)
+      .innerJoin(subjects, eq(examSessions.subjectId, subjects.id))
+      .where(
+        and(
+          eq(examSessions.id, resultId),
+          eq(examSessions.studentId, req.auth!.userId),
+          inArray(examSessions.status, ["submitted", "expired"])
+        )
+      )
+      .get();
+
+    if (!result) {
+      throw new ApiError(404, "NOT_FOUND", "Result not found.");
+    }
+
+    res.json({ success: true, data: { result } });
   }
 );

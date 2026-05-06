@@ -308,20 +308,9 @@ export default function ExamPage(){
     setSubmitError('')
     setSubmitting(true)
     try {
-      const res = await api.exams.submit(sessionId)
-      const s = res.summary
+      await api.exams.submit(sessionId)
       sessionStorage.removeItem('active_exam_session_id')
-      navigate('/result', {
-        state: {
-          correct: s.correct,
-          incorrect: s.incorrect,
-          unanswered: s.unanswered,
-          score: s.scorePct,
-          total: s.totalQuestions,
-          timeUsed: 'Server-timed',
-          subject: serverSubjectName,
-        },
-      })
+      navigate(`/result/${sessionId}`)
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Unable to submit exam now.')
     } finally {
