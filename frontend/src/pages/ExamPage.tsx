@@ -249,7 +249,14 @@ export default function ExamPage(){
 
         setServerSubjectName(res.subject.name)
         setCanEdit(res.session.canEdit)
-        setTimeLeft(res.session.remainingSeconds)
+
+        // If session is already done, clear any stale sessionStorage reference
+        if (res.session.status === 'submitted' || res.session.status === 'expired') {
+          sessionStorage.removeItem('active_exam_session_id')
+          setTimeLeft(0)
+        } else {
+          setTimeLeft(res.session.remainingSeconds)
+        }
 
         const mapped = res.questions.map((q) => ({
           id: q.id,
@@ -320,11 +327,12 @@ export default function ExamPage(){
   }, [navigate, serverSubjectName, sessionId, submitting])
 
   useEffect(()=>{
-    if (loadingQuestions || TOTAL === 0) return
+    // Don't start the timer if still loading, no questions, or session is read-only (already submitted)
+    if (loadingQuestions || TOTAL === 0 || !canEdit) return
     if(timeLeft<=0){void submitExam();return}
     const t=setInterval(()=>setTimeLeft(s=>s-1),1000)
     return()=>clearInterval(t)
-  },[timeLeft,submitExam,loadingQuestions,TOTAL])
+  },[timeLeft,submitExam,loadingQuestions,TOTAL,canEdit])
 
   const fmt=useCallback((secs:number)=>{
     const h=Math.floor(secs/3600),m=Math.floor((secs%3600)/60),s=secs%60
