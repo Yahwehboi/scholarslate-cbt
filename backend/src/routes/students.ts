@@ -5,7 +5,7 @@ import multer from "multer";
 import { db } from "../db/connection.js";
 import { users, examSessions, subjects } from "../db/schema.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
-import { listStudentsQuerySchema, bulkStudentRowSchema } from "../validation/auth.schemas.js";
+import { listStudentsQuerySchema, bulkStudentRowSchema, updateProfileSchema } from "../validation/auth.schemas.js";
 import { ApiError } from "../middleware/error-handler.js";
 
 export const studentsRouter = Router();
@@ -247,7 +247,7 @@ studentsRouter.get(
       .innerJoin(subjects, eq(examSessions.subjectId, subjects.id))
       .where(
         and(
-          eq(examSessions.id, resultId),
+          eq(examSessions.id, String(resultId)),
           eq(examSessions.studentId, req.auth!.userId),
           inArray(examSessions.status, ["submitted", "expired"])
         )
@@ -259,5 +259,98 @@ studentsRouter.get(
     }
 
     res.json({ success: true, data: { result } });
+  }
+);
+
+// GET /api/students/profile
+studentsRouter.get(
+  "/profile",
+  requireAuth,
+  requireRole(["student"]),
+  async (req: Request, res: Response) => {
+    const userId = req.auth!.userId;
+
+    const student = await db
+      .select({
+        id: users.id,
+        studentId: users.studentId,
+        fullName: users.fullName,
+        className: users.className,
+        isActive: users.isActive,
+        createdAt: users.createdAt,
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .get();
+
+    if (!student) {
+      throw new ApiError(404, "NOT_FOUND", "Student profile not found.");
+    }
+
+    // Aggregate academic stats from exam sessions
+    const sessions = await db
+      .select({ score: examSessions.scorePct })
+      .from(examSessions)
+      .where(
+        and(
+          eq(examSessions.studentId, userId),
+          inArray(examSessions.status, ["submitted", "expired"])
+        )
+      )
+      .all();
+
+    const totalExams = sessions.length;
+    const passed = sessions.filter((s) => s.score >= 50).length;
+    const averageScore =
+      totalExams > 0
+        ? Math.round(sessions.reduce((acc, s) => acc + s.score, 0) / totalExams)
+        : 0;
+    const passRate = totalExams > 0 ? Math.round((passed / totalExams) * 100) : 0;
+
+    res.json({
+      success: true,
+      data: {
+        profile: {
+          ...student,
+          stats: { totalExams, passed, averageScore, passRate },
+        },
+      },
+    });
+  }
+);
+
+// PUT /api/students/profile
+studentsRouter.put(
+  "/profile",
+  requireAuth,
+  requireRole(["student"]),
+  async (req: Request, res: Response) => {
+    const parsed = updateProfileSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new ApiError(400, "VALIDATION_ERROR", parsed.error.issues[0].message);
+    }
+
+    const { fullName } = parsed.data;
+    const userId = req.auth!.userId;
+
+    await db
+      .update(users)
+      .set({ fullName, updatedAt: new Date().toISOString() })
+      .where(eq(users.id, userId))
+      .run();
+
+    const updated = await db
+      .select({
+        id: users.id,
+        studentId: users.studentId,
+        fullName: users.fullName,
+        className: users.className,
+        isActive: users.isActive,
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .get();
+
+    res.json({ success: true, data: { profile: updated } });
   }
 );

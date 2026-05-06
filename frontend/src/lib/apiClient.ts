@@ -96,6 +96,15 @@ export const api = {
 
     getResult: (resultId: string) =>
       request<{ result: ApiResult }>(`/students/results/${resultId}`),
+
+    getProfile: () =>
+      request<{ profile: ApiProfile }>("/students/profile"),
+
+    updateProfile: (body: { fullName: string }) =>
+      request<{ profile: Pick<ApiProfile, 'id' | 'studentId' | 'fullName' | 'className' | 'isActive'> }>("/students/profile", {
+        method: "PUT",
+        body: JSON.stringify(body),
+      }),
   },
 
   subjects: {
@@ -279,4 +288,10 @@ export const api = {
   export type AdminResult = {
     id: string; studentId: string; studentName: string; subject: string;
     score: number; status: "Pass" | "Fail"; date: string;
+  };
+
+  export type ApiProfile = {
+    id: string; studentId: string | null; fullName: string;
+    className: string | null; isActive: boolean; createdAt: string;
+    stats: { totalExams: number; passed: number; averageScore: number; passRate: number };
   };

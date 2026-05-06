@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { formatClassLabel, getUserInitials } from '../lib/auth'
+import { api, type ApiProfile } from '../lib/apiClient'
 
 const Ic = {
   school:    <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3zM5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82z"/></svg>,
@@ -105,27 +106,49 @@ function Field({ label, value, onChange, type = 'text', readOnly = false }:
 export default function StudentProfilePage() {
   const { session } = useAuth()
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [saved, setSaved] = useState(false)
   const [showPwModal, setShowPwModal] = useState(false)
-  const studentName = session?.role === 'student' ? session.fullName : 'Student'
-  const studentEmail = ''
-  const studentPhone = ''
-  const studentId = session?.role === 'student' ? session.studentId : '—'
-  const studentClass = session?.role === 'student' ? session.className : ''
-  const studentClassLabel = session?.role === 'student' ? formatClassLabel(session.className ?? '') : ''
+  const [profile, setProfile] = useState<ApiProfile | null>(null)
+  const [loadingProfile, setLoadingProfile] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState('')
+  const [saved, setSaved] = useState(false)
+
+  // Local form state — seeded from API once loaded
+  const [form, setForm] = useState({ fullName: '' })
+
+  useEffect(() => {
+    api.students.getProfile()
+      .then(({ profile }) => {
+        setProfile(profile)
+        setForm({ fullName: profile.fullName })
+      })
+      .catch(console.error)
+      .finally(() => setLoadingProfile(false))
+  }, [])
+
+  // Derived display values — fall back to session while profile loads
+  const studentName = profile?.fullName ?? (session?.role === 'student' ? session.fullName : 'Student')
+  const studentId = profile?.studentId ?? (session?.role === 'student' ? session.studentId : '—')
+  const studentClass = profile?.className ?? (session?.role === 'student' ? session.className : '')
+  const studentClassLabel = formatClassLabel(studentClass ?? '')
   const studentInitials = getUserInitials(studentName)
+  const stats = profile?.stats ?? { totalExams: 0, passed: 0, averageScore: 0, passRate: 0 }
 
-  const [form, setForm] = useState({
-    fullName: studentName,
-    email: studentEmail,
-    phone: studentPhone,
-    address: '12 Maitama Street, Abuja',
-  })
-
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
-    setSaved(true)
-    setTimeout(() => setSaved(false), 3000)
+    if (!form.fullName.trim()) return
+    setSaving(true)
+    setSaveError('')
+    try {
+      const { profile: updated } = await api.students.updateProfile({ fullName: form.fullName.trim() })
+      setProfile(prev => prev ? { ...prev, fullName: updated.fullName ?? prev.fullName } : prev)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 3000)
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Failed to save. Please try again.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -198,13 +221,15 @@ export default function StudentProfilePage() {
                       <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
                     </button>
                   </div>
-                  <h3 className="text-xl font-bold text-center mb-1" style={{ fontFamily: 'Manrope,sans-serif', color: '#191c1d' }}>{studentName}</h3>
-                  <p className="text-sm mb-6" style={{ color: '#6d7b6c' }}>{studentEmail}</p>
+                  <h3 className="text-xl font-bold text-center mb-1" style={{ fontFamily: 'Manrope,sans-serif', color: '#191c1d' }}>
+                    {loadingProfile ? '—' : studentName}
+                  </h3>
+                  <p className="text-sm mb-6" style={{ color: '#6d7b6c' }}>{studentId ?? '—'}</p>
 
                   <div className="w-full space-y-3 pt-5" style={{ borderTop: '1px solid #edeeef' }}>
                     {[
-                      { label: 'Student ID', value: studentId },
-                      { label: 'Class', value: studentClass },
+                      { label: 'Student ID', value: studentId ?? '—' },
+                      { label: 'Class', value: studentClassLabel || '—' },
                       { label: 'Term', value: '2025/2026 First' },
                     ].map(({ label, value }) => (
                       <div key={label} className="flex justify-between items-center text-sm">
@@ -228,7 +253,12 @@ export default function StudentProfilePage() {
                 className="p-6 rounded-2xl" style={{ backgroundColor: '#f3f4f5' }}>
                 <h4 className="text-xs font-bold uppercase tracking-wider mb-4" style={{ color: '#6d7b6c' }}>Academic Summary</h4>
                 <div className="grid grid-cols-2 gap-3">
-                  {[{ label: 'Avg Score', value: '78%', color: '#006e2f' }, { label: 'Rank', value: 'Top 15%', color: '#2f6a3c' }, { label: 'Exams Done', value: '6', color: '#191c1d' }, { label: 'Pass Rate', value: '83%', color: '#006e2f' }].map(({ label, value, color }) => (
+                  {[
+                    { label: 'Avg Score', value: loadingProfile ? '—' : `${stats.averageScore}%`, color: '#006e2f' },
+                    { label: 'Pass Rate', value: loadingProfile ? '—' : `${stats.passRate}%`, color: '#2f6a3c' },
+                    { label: 'Exams Done', value: loadingProfile ? '—' : String(stats.totalExams), color: '#191c1d' },
+                    { label: 'Passed', value: loadingProfile ? '—' : String(stats.passed), color: '#006e2f' },
+                  ].map(({ label, value, color }) => (
                     <div key={label} className="p-4 rounded-xl" style={{ backgroundColor: '#ffffff' }}>
                       <p className="text-xs mb-1" style={{ color: '#6d7b6c' }}>{label}</p>
                       <p className="text-xl font-extrabold" style={{ fontFamily: 'Manrope,sans-serif', color }}>{value}</p>
@@ -253,21 +283,28 @@ export default function StudentProfilePage() {
                 <form onSubmit={handleSave}>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-7">
                     <Field label="School" value="Sunshine Secondary School" readOnly />
-                    <Field label="Class / Form" value="SS2 — Science" readOnly />
+                    <Field label="Class / Form" value={studentClassLabel || '—'} readOnly />
                     <Field label="Full Name" value={form.fullName} onChange={v => setForm(f => ({ ...f, fullName: v }))} />
-                    <Field label="Personal Email" value={form.email} type="email" onChange={v => setForm(f => ({ ...f, email: v }))} />
-                    <Field label="Phone Number" value={form.phone} type="tel" onChange={v => setForm(f => ({ ...f, phone: v }))} />
-                    <Field label="Home Address" value={form.address} onChange={v => setForm(f => ({ ...f, address: v }))} />
+                    <Field label="Student ID" value={studentId ?? '—'} readOnly />
+                    <Field label="Personal Email" value="Contact your administrator" readOnly />
+                    <Field label="Phone Number" value="Contact your administrator" readOnly />
                   </div>
+
+                  {saveError && (
+                    <div className="mt-5 p-3 rounded-xl text-sm font-semibold" style={{ backgroundColor: '#ffdad6', color: '#9e4036' }}>
+                      {saveError}
+                    </div>
+                  )}
 
                   <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mt-10 pt-8" style={{ borderTop: '1px solid #edeeef' }}>
                     <p className="text-xs flex items-center gap-1.5" style={{ color: '#6d7b6c' }}>
                       {Ic.info} Changes are logged and verified by the school registrar.
                     </p>
                     <motion.button type="submit" whileHover={{ y: -2 }} whileTap={{ scale: 0.97 }}
+                      disabled={saving}
                       className="flex items-center gap-2 px-8 py-3.5 rounded-xl font-bold text-sm text-white"
-                      style={{ background: 'linear-gradient(135deg,#006e2f,#22c55e)', boxShadow: '0 4px 14px rgba(34,197,94,0.3)', fontFamily: 'Manrope,sans-serif' }}>
-                      {saved ? <>{Ic.check} Saved!</> : <>{Ic.save} Save Changes</>}
+                      style={{ background: 'linear-gradient(135deg,#006e2f,#22c55e)', boxShadow: '0 4px 14px rgba(34,197,94,0.3)', fontFamily: 'Manrope,sans-serif', opacity: saving ? 0.75 : 1 }}>
+                      {saved ? <>{Ic.check} Saved!</> : saving ? 'Saving...' : <>{Ic.save} Save Changes</>}
                     </motion.button>
                   </div>
                 </form>

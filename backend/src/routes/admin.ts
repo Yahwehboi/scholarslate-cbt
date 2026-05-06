@@ -11,7 +11,7 @@ adminRouter.get(
   "/results",
   requireAuth,
   requireRole(["admin", "super_admin"]),
-  async (req: Request, res: Response) => {
+  async (_req: Request, res: Response) => {
     const results = await db
       .select({
         id: examSessions.id,
@@ -47,7 +47,7 @@ adminRouter.get(
   "/results/metrics",
   requireAuth,
   requireRole(["admin", "super_admin"]),
-  async (req: Request, res: Response) => {
+  async (_req: Request, res: Response) => {
     const results = await db
       .select({ score: examSessions.scorePct })
       .from(examSessions)
