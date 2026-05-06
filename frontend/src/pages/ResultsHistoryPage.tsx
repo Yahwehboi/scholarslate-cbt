@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { api, type ApiResult } from '../lib/apiClient'
 import { useAuth } from '../context/AuthContext'
 import { formatClassLabel, getUserInitials } from '../lib/auth'
 
@@ -16,22 +17,16 @@ const Ic = {
   search:    <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>,
   filter:    <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z"/></svg>,
   print:     <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M19 8H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zm-3 11H8v-5h8v5zm3-7c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm-1-9H6v4h12V3z"/></svg>,
+  history:   <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>,
   math:      <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM7.5 18l2-4H7v-2h3.5l-2-4H11l1 2.5L13 8h2.5l-2 4H17v2h-2.5l2 4H14l-2-5-2 5H7.5z"/></svg>,
   science:   <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M7 2v2h1v7.6L4.8 17c-.5.8-.3 1.9.5 2.4.3.2.6.3.9.3h11.6c.9 0 1.7-.8 1.7-1.7 0-.3-.1-.6-.2-.9L16 11.6V4h1V2H7z"/></svg>,
   english:   <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M12.87 15.07l-2.54-2.51.03-.03c1.74-1.94 2.98-4.17 3.71-6.53H17V4h-7V2H8v2H1v1.99h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04z"/></svg>,
   empty:     <svg viewBox="0 0 24 24" fill="currentColor" width="32" height="32"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.23c0-.62.28-1.2.76-1.58C7.47 15.82 9.64 15 12 15s4.53.82 6.24 2.19c.48.38.76.97.76 1.58V19z"/></svg>,
 }
 
-// Mock history data — replace with API later
-const HISTORY = [
-  {id:1, subject:'Mathematics',     icon:Ic.math,    iconBg:'#e8f5e9', iconColor:'#2f6a3c', score:85, total:20, pct:85, attempt:1, date:'Apr 2, 2026',  status:'Pass'},
-  {id:2, subject:'English Language',icon:Ic.english, iconBg:'#fce4ec', iconColor:'#880e4f', score:14, total:20, pct:70, attempt:1, date:'Mar 28, 2026', status:'Pass'},
-  {id:3, subject:'Biology',         icon:Ic.science, iconBg:'#e3f2fd', iconColor:'#1565c0', score:8,  total:20, pct:40, attempt:1, date:'Mar 24, 2026', status:'Fail'},
-  {id:4, subject:'Chemistry',       icon:Ic.science, iconBg:'#fff3e0', iconColor:'#e65100', score:18, total:20, pct:90, attempt:1, date:'Mar 20, 2026', status:'Pass'},
-  {id:5, subject:'Biology',         icon:Ic.science, iconBg:'#e3f2fd', iconColor:'#1565c0', score:12, total:20, pct:60, attempt:2, date:'Mar 10, 2026', status:'Pass'},
-  {id:6, subject:'Mathematics',     icon:Ic.math,    iconBg:'#e8f5e9', iconColor:'#2f6a3c', score:9,  total:20, pct:45, attempt:2, date:'Feb 28, 2026', status:'Fail'},
-]
-
+const ICON_MAP: Record<string, React.ReactNode> = {
+  math: Ic.math, science: Ic.science, english: Ic.english, book: Ic.book
+}
 function Sidebar({open,onClose}:{open:boolean;onClose:()=>void}){
   const navigate=useNavigate(), location=useLocation()
   const { logout } = useAuth()
@@ -84,22 +79,43 @@ function Sidebar({open,onClose}:{open:boolean;onClose:()=>void}){
 
 export default function ResultsHistoryPage(){
   const { session } = useAuth()
+  const navigate = useNavigate()
   const [sidebarOpen,setSidebarOpen]=useState(false)
   const [query,setQuery]=useState('')
   const [statusFilter,setStatusFilter]=useState('All')
   const [dateFilter,setDateFilter]=useState('')
+  
+  const [history, setHistory] = useState<ApiResult[]>([])
+  const [loading, setLoading] = useState(true)
 
-  const filtered=HISTORY.filter(r=>{
-    const matchSearch=r.subject.toLowerCase().includes(query.toLowerCase())
-    const matchStatus=statusFilter==='All'||r.status===statusFilter
-    return matchSearch&&matchStatus
+  useEffect(() => {
+    api.students.getResults()
+      .then(res => setHistory(res.results))
+      .catch(console.error)
+      .finally(() => setLoading(false))
+  }, [])
+
+  const filtered=history.filter(r=>{
+    const matchSearch=r.subjectName.toLowerCase().includes(query.toLowerCase())
+    const passed = r.scorePct >= 50
+    const statusLabel = passed ? 'Pass' : 'Fail'
+    const matchStatus=statusFilter==='All'||statusLabel===statusFilter
+    
+    // Simple date filter check
+    let matchDate = true
+    if (dateFilter) {
+      const submittedDate = r.submittedAt ? new Date(r.submittedAt).toISOString().split('T')[0] : ''
+      matchDate = submittedDate === dateFilter
+    }
+    
+    return matchSearch && matchStatus && matchDate
   })
 
   // Summary stats
-  const totalExams=HISTORY.length
-  const passCount=HISTORY.filter(r=>r.status==='Pass').length
-  const avgScore=Math.round(HISTORY.reduce((s,r)=>s+r.pct,0)/HISTORY.length)
-  const best=Math.max(...HISTORY.map(r=>r.pct))
+  const totalExams=history.length
+  const passCount=history.filter(r=>r.scorePct>=50).length
+  const avgScore=totalExams > 0 ? Math.round(history.reduce((s,r)=>s+r.scorePct,0)/totalExams) : 0
+  const best=totalExams > 0 ? Math.max(...history.map(r=>r.scorePct)) : 0
   const studentName = session?.role === 'student' ? session.fullName : 'Student'
   const studentClass = session?.role === 'student' ? formatClassLabel(session.className ?? '') : ''
   const studentInitials = getUserInitials(studentName)
@@ -199,71 +215,80 @@ export default function ResultsHistoryPage(){
               <span className="text-right">Actions</span>
             </div>
 
-            {filtered.length===0?(
+            {loading ? (
+              <div className="flex flex-col items-center justify-center py-20" style={{color:'#6d7b6c'}}>
+                <p className="mt-4 font-bold" style={{fontFamily:'Manrope,sans-serif',color:'#191c1d'}}>Loading history...</p>
+              </div>
+            ) : filtered.length===0?(
               <div className="flex flex-col items-center justify-center py-20" style={{color:'#6d7b6c'}}>
                 {Ic.empty}
                 <p className="mt-4 font-bold" style={{fontFamily:'Manrope,sans-serif',color:'#191c1d'}}>No results found</p>
                 <p className="text-sm mt-1">Try adjusting your search or filters.</p>
               </div>
             ):(
-              filtered.map((row,i)=>(
-                <motion.div key={row.id}
-                  initial={{opacity:0,x:-8}} animate={{opacity:1,x:0}} transition={{delay:0.05*i,duration:0.3}}
-                  className="grid px-6 py-5 items-center transition-colors duration-150"
-                  style={{gridTemplateColumns:'2fr 1fr 1.5fr 1fr 1.2fr 1fr',borderTop:i===0?'none':'1px solid #f3f4f5'}}
-                  onMouseEnter={e=>((e.currentTarget as HTMLElement).style.backgroundColor='#f8f9fa')}
-                  onMouseLeave={e=>((e.currentTarget as HTMLElement).style.backgroundColor='transparent')}>
+              filtered.map((row,i)=>{
+                const passed = row.scorePct >= 50
+                const statusLabel = passed ? 'Pass' : 'Fail'
+                const displayDate = row.submittedAt ? new Date(row.submittedAt).toLocaleDateString(undefined, {month:'short', day:'numeric', year:'numeric'}) : '—'
+                return (
+                  <motion.div key={row.id}
+                    initial={{opacity:0,x:-8}} animate={{opacity:1,x:0}} transition={{delay:0.05*i,duration:0.3}}
+                    className="grid px-6 py-5 items-center transition-colors duration-150"
+                    style={{gridTemplateColumns:'2fr 1fr 1.5fr 1fr 1.2fr 1fr',borderTop:i===0?'none':'1px solid #f3f4f5'}}
+                    onMouseEnter={e=>{ (e.currentTarget as HTMLElement).style.backgroundColor='#f8f9fa' }}
+                    onMouseLeave={e=>{ (e.currentTarget as HTMLElement).style.backgroundColor='transparent' }}>
 
-                  {/* Subject */}
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
-                      style={{backgroundColor:row.iconBg,color:row.iconColor}}>
-                      {row.icon}
+                    {/* Subject */}
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+                        style={{backgroundColor:row.iconBg,color:'#006e2f'}}>
+                        {ICON_MAP[row.iconKey] || Ic.book}
+                      </div>
+                      <span className="font-semibold text-sm" style={{color:'#191c1d'}}>{row.subjectName}</span>
                     </div>
-                    <span className="font-semibold text-sm" style={{color:'#191c1d'}}>{row.subject}</span>
-                  </div>
 
-                  {/* Score */}
-                  <span className="font-bold text-sm" style={{color:'#191c1d'}}>{row.score}/{row.total}</span>
+                    {/* Score */}
+                    <span className="font-bold text-sm" style={{color:'#191c1d'}}>{row.correctCount}/{row.totalQuestions}</span>
 
-                  {/* Percentage bar */}
-                  <div className="flex items-center gap-2">
-                    <div className="w-20 h-1.5 rounded-full overflow-hidden" style={{backgroundColor:'#e7e8e9'}}>
-                      <motion.div initial={{width:0}} animate={{width:`${row.pct}%`}} transition={{delay:0.3+i*0.05,duration:0.5,ease:'easeOut'}}
-                        className="h-full rounded-full"
-                        style={{backgroundColor:row.status==='Pass'?'#006e2f':'#9e4036'}}/>
+                    {/* Percentage bar */}
+                    <div className="flex items-center gap-2">
+                      <div className="w-20 h-1.5 rounded-full overflow-hidden" style={{backgroundColor:'#e7e8e9'}}>
+                        <motion.div initial={{width:0}} animate={{width:`${row.scorePct}%`}} transition={{delay:0.3+i*0.05,duration:0.5,ease:'easeOut'}}
+                          className="h-full rounded-full"
+                          style={{backgroundColor:passed?'#006e2f':'#9e4036'}}/>
+                      </div>
+                      <span className="text-xs font-bold" style={{color:passed?'#006e2f':'#9e4036'}}>{row.scorePct}%</span>
                     </div>
-                    <span className="text-xs font-bold" style={{color:row.status==='Pass'?'#006e2f':'#9e4036'}}>{row.pct}%</span>
-                  </div>
 
-                  {/* Attempt */}
-                  <div className="flex justify-center">
-                    <span className="text-[10px] font-bold uppercase px-3 py-1 rounded-full"
-                      style={{backgroundColor:'#e7e8e9',color:'#3d4a3d'}}>
-                      {row.attempt}{row.attempt===1?'st':row.attempt===2?'nd':'rd'} Attempt
-                    </span>
-                  </div>
+                    {/* Attempt */}
+                    <div className="flex justify-center">
+                      <span className="text-[10px] font-bold uppercase px-3 py-1 rounded-full"
+                        style={{backgroundColor:'#e7e8e9',color:'#3d4a3d'}}>
+                        {row.attemptNo}{row.attemptNo===1?'st':row.attemptNo===2?'nd':'rd'} Attempt
+                      </span>
+                    </div>
 
-                  {/* Date */}
-                  <span className="text-sm" style={{color:'#6d7b6c'}}>{row.date}</span>
+                    {/* Date */}
+                    <span className="text-sm" style={{color:'#6d7b6c'}}>{displayDate}</span>
 
-                  {/* Status + print */}
-                  <div className="flex items-center justify-end gap-2">
-                    <span className="text-[10px] font-bold uppercase px-2.5 py-1 rounded-full"
-                      style={{backgroundColor:row.status==='Pass'?'#e8f5ed':'#ffdad6',color:row.status==='Pass'?'#006e2f':'#9e4036'}}>
-                      {row.status}
-                    </span>
-                    <motion.button whileTap={{scale:0.93}}
-                      onClick={()=>window.print()}
-                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
-                      style={{backgroundColor:'#ffffff',border:'1px solid #e7e8e9',color:'#3d4a3d'}}
-                      onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.backgroundColor='#006e2f';(e.currentTarget as HTMLElement).style.color='#fff';(e.currentTarget as HTMLElement).style.borderColor='#006e2f'}}
-                      onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.backgroundColor='#fff';(e.currentTarget as HTMLElement).style.color='#3d4a3d';(e.currentTarget as HTMLElement).style.borderColor='#e7e8e9'}}>
-                      {Ic.print} Print
-                    </motion.button>
-                  </div>
-                </motion.div>
-              ))
+                    {/* Status + view details */}
+                    <div className="flex items-center justify-end gap-2">
+                      <span className="text-[10px] font-bold uppercase px-2.5 py-1 rounded-full"
+                        style={{backgroundColor:passed?'#e8f5ed':'#ffdad6',color:passed?'#006e2f':'#9e4036'}}>
+                        {statusLabel}
+                      </span>
+                      <motion.button whileTap={{scale:0.93}}
+                        onClick={()=>navigate(`/result/${row.id}`)}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+                        style={{backgroundColor:'#ffffff',border:'1px solid #e7e8e9',color:'#3d4a3d'}}
+                        onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.backgroundColor='#006e2f';(e.currentTarget as HTMLElement).style.color='#fff';(e.currentTarget as HTMLElement).style.borderColor='#006e2f'}}
+                        onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.backgroundColor='#fff';(e.currentTarget as HTMLElement).style.color='#3d4a3d';(e.currentTarget as HTMLElement).style.borderColor='#e7e8e9'}}>
+                        {Ic.history} Details
+                      </motion.button>
+                    </div>
+                  </motion.div>
+                )
+              })
             )}
           </motion.div>
 

@@ -25,7 +25,7 @@ function App() {
         <Route path="/select-subject" element={<SelectSubjectPage />} />
         <Route path="/instructions" element={<InstructionsPage />} />
         <Route path="/exam" element={<ExamPage />} />
-        <Route path="/result" element={<ResultPage />} />
+        <Route path="/result/:resultId" element={<ResultPage />} />
         <Route path="/results-history" element={<ResultsHistoryPage />} />
         <Route path="/profile" element={<StudentProfilePage />} />
       </Route>
